@@ -1,0 +1,218 @@
+"""
+Punto de entrada principal FastAPI - Replit Ready
+NOTA: No ejecuta seed automáticamente. 
+Usar: python tools/seed_admin.py
+"""
+import logging
+from datetime import datetime
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+import uvicorn
+from sqlalchemy import text
+
+from config import settings
+from database import engine, get_db, init_database, test_connections, neo4j_driver
+from models import Base
+from api import assets, risk, scenarios, auth
+from services. cache_service import cache_service
+
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gestión del ciclo de vida"""
+    logger.info("🚀 Iniciando WallStreetWar API en Replit...")
+    logger.info(f"📍 Entorno: {settings.ENVIRONMENT}")
+    logger.info(f"🔧 Debug: {settings.DEBUG}")
+    logger.info(f"🔌 DB:  {settings.DATABASE_URL[: 40]}...")
+
+    try:
+        success = init_database()
+        if success:
+            logger.info("✅ Base de datos inicializada")
+        else:
+            logger. warning("⚠️  BD no completamente inicializada")
+    except Exception as e:
+        logger.error(f"❌ Error DB: {e}")
+
+    try:
+        connections = test_connections()
+        logger.info(f"📊 Conexiones:")
+        logger.info(f"   - PostgreSQL/SQLite: {'✅' if connections. get('postgres') else '❌'}")
+        logger.info(f"   - Redis: {'✅' if connections. get('redis') else '⊘' if connections.get('redis') is None else '❌'}")
+        logger.info(f"   - Neo4j: {'✅' if connections.get('neo4j') else '⊘' if connections.get('neo4j') is None else '❌'}")
+    except Exception as e:
+        logger.error(f"⚠️  Error conexiones: {e}")
+
+    try:
+        cache_service.initialize()
+        logger.info("✅ Cache inicializado")
+    except Exception as e:
+        logger.warning(f"⚠️  Error cache: {e}")
+
+    yield
+
+    logger.info("🛑 Apagando WallStreetWar API...")
+    try:
+        cache_service.close()
+    except:
+        pass
+
+
+app = FastAPI(
+    title="WallStreetWar API",
+    description="Sistema de riesgo sistémico financiero (MVP Replit)",
+    version="1.0.0",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
+    lifespan=lifespan
+)
+
+# Middlewares
+origins = settings.cors_origins_list if settings.cors_origins_list else ["*"]
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+if settings.trusted_hosts_list:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts_list)
+
+# Routers
+app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
+app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
+app.include_router(risk. router, prefix="/api/risk", tags=["risk"])
+app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "WallStreetWar Systemic Risk Engine",
+        "version": "1.0.0",
+        "status": "operational",
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.utcnow().isoformat(),
+        "endpoints": {
+            "health": "/health",
+            "docs": "/docs" if settings.DEBUG else None,
+            "assets": "/api/assets",
+            "risk": "/api/risk",
+            "scenarios": "/api/scenarios",
+            "auth": "/api/auth"
+        }
+    }
+
+
+@app.get("/health")
+async def health_check():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_status = "healthy"
+    except Exception as e: 
+        logger.error(f"❌ Health check DB failed: {e}")
+        db_status = "unhealthy"
+
+    redis_status = "unavailable"
+    try:
+        if hasattr(cache_service, 'is_connected') and cache_service.is_connected():
+            redis_status = "healthy"
+    except: 
+        redis_status = "unavailable"
+
+    neo4j_status = "unavailable"
+    try: 
+        if neo4j_driver: 
+            with neo4j_driver.session() as session:
+                session.run("RETURN 1")
+            neo4j_status = "healthy"
+    except:
+        neo4j_status = "unavailable"
+
+    overall_status = "healthy" if db_status == "healthy" else "degraded"
+
+    return {
+        "status":  overall_status,
+        "timestamp": datetime.utcnow().isoformat(),
+        "services": {
+            "database": db_status,
+            "cache": redis_status,
+            "neo4j": neo4j_status
+        },
+        "environment": settings.ENVIRONMENT,
+        "debug": settings.DEBUG
+    }
+
+
+@app.get("/api/status")
+async def system_status():
+    from services.data_service import DataService
+    from database import SessionLocal
+
+    try:
+        db = SessionLocal()
+        data_service = DataService(db)
+        return {
+            "system": "WallStreetWar",
+            "version": "1.0.0",
+            "environment": settings.ENVIRONMENT,
+            "timestamp": datetime.utcnow().isoformat(),
+            "statistics": {
+                "assets_count": data_service.count_assets(),
+                "prices_count": data_service.count_prices(),
+                "risk_metrics_calculated": 0,
+                "alerts_active": 0
+            },
+            "database_url": settings.DATABASE_URL[: 50] + "..."
+        }
+    except Exception as e:
+        logger.error(f"❌ /api/status error: {e}")
+        return {
+            "system": "WallStreetWar",
+            "version": "1.0.0",
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/config")
+async def get_config():
+    return {
+        "environment": settings.ENVIRONMENT,
+        "debug": settings. DEBUG,
+        "database":  {
+            "type": "sqlite" if settings.USE_SQLITE else "postgresql",
+            "timescale_enabled": settings. ENABLE_TIMESCALE
+        },
+        "cache": {
+            "redis_enabled": settings.ENABLE_REDIS
+        },
+        "neo4j": {
+            "enabled": settings.ENABLE_NEO4J
+        },
+        "api": {
+            "host": settings.API_HOST,
+            "port": settings.API_PORT,
+            "cors_origins": settings.cors_origins_list,
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+if __name__ == "__main__": 
+    logger.info(f"🚀 Iniciando en {settings.API_HOST}:{settings.API_PORT}")
+    uvicorn.run(
+        "main:app",
+        host=settings.API_HOST,
+        port=settings.API_PORT,
+        reload=settings.DEBUG,
+        log_level="debug" if settings.DEBUG else "info"
+    )

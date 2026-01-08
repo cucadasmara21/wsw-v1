@@ -12,13 +12,17 @@ from sqlalchemy.orm import sessionmaker, Session
 # Redis and Neo4j are optional. Import if available, otherwise disable features gracefully.
 try:
     import redis
-except Exception:
+except ImportError:
     redis = None
+    logger = logging.getLogger(__name__)
+    logger.info("ℹ️  Redis package not installed; Redis features will be disabled unless installed from requirements-optional.txt")
 
 try:
     from neo4j import GraphDatabase
-except Exception:
+except ImportError:
     GraphDatabase = None
+    logger = logging.getLogger(__name__)
+    logger.info("ℹ️  Neo4j package not installed; Neo4j features will be disabled unless installed from requirements-optional.txt")
 
 from config import settings
 

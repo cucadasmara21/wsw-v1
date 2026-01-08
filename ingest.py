@@ -13,10 +13,11 @@ logger = logging.getLogger(__name__)
 try:
     import yfinance as yf
     import pandas as pd
-except ModuleNotFoundError:
+except ImportError:
     yf = None
     pd = None
     logger.warning("⚠️  analytics deps not installed: ingest disabled. Install `pip install -r requirements-analytics.txt` to enable.")
+
 
 from database import SessionLocal
 from models import Asset, Price

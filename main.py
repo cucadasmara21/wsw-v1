@@ -4,9 +4,11 @@ NOTA: No ejecuta seed automáticamente.
 Usar: python tools/seed_admin.py
 """
 import logging
+import uuid
+import subprocess
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
@@ -17,6 +19,26 @@ from database import engine, get_db, init_database, test_connections, neo4j_driv
 from models import Base
 from api import assets, risk, scenarios, auth
 from services.cache_service import cache_service
+
+# Build info
+def _get_git_sha() -> str:
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL)
+        return out.decode().strip()
+    except Exception:
+        return "unknown"
+
+BUILD_INFO = {
+    "git_sha": _get_git_sha(),
+    "build_time": datetime.utcnow().isoformat()
+}
+
+# Logger
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -74,6 +96,19 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan
 )
+
+# Simple request-id middleware
+@app.middleware("http")
+async def add_request_id_header(request: Request, call_next):
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.exception(f"[{request_id}] Unhandled error while handling request: {e}")
+        raise
+    response.headers["X-Request-Id"] = request_id
+    return response
+
 
 # Middlewares
 origins = settings.cors_origins_list if settings.cors_origins_list else ["*"]
@@ -148,6 +183,14 @@ async def health_check():
         "debug": settings.DEBUG
     }
 
+
+@app.get('/version')
+async def version():
+    """Return build info including git sha and build time"""
+    return {
+        "git_sha": BUILD_INFO.get("git_sha"),
+        "build_time": BUILD_INFO.get("build_time")
+    }
 
 @app.get("/api/status")
 async def system_status():

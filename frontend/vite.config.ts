@@ -6,12 +6,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    strictPort: true, // fail if 5173 is busy (preferred for clarity)
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true
       },
       '/health': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/version': {
         target: 'http://localhost:8000',
         changeOrigin: true
       }

@@ -216,6 +216,8 @@ A minimal React + TypeScript frontend is available in `/frontend` (Vite). It use
 
 > Nota: El frontend del devserver usa por defecto el puerto `5173` y el backend `8000`; en Codespaces asegúrate de exponer ambos puertos.
 
+Para más detalles de arranque rápido, troubleshooting y comandos de verificación, ver `docs/DEVELOPMENT.md`.
+
 
 Run locally:
 

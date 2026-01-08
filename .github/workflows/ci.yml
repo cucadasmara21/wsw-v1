@@ -24,9 +24,16 @@ jobs:
           . .venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Initialize DB
         run: . .venv/bin/activate && python init_db.py
+
+      - name: Lint with ruff
+        run: . .venv/bin/activate && python -m ruff .
+
+      - name: Run tests
+        run: . .venv/bin/activate && pytest -q
 
       - name: Start server
         run: . .venv/bin/activate && nohup uvicorn main:app --host 127.0.0.1 --port 8000 & sleep 3
@@ -34,7 +41,18 @@ jobs:
       - name: Health check
         run: curl -f http://127.0.0.1:8000/health
 
-      - name: Install frontend and build (optional)
+  frontend:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend and build
         working-directory: ./frontend
         run: |
           npm ci

@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 88
+extend-select = ["E", "F", "W", "C", "B"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+skip-string-normalization = true

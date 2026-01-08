@@ -44,12 +44,52 @@ UV_PID=$!
 
 sleep 1
 
-# Start frontend with strictPort=true to fail early if 5173 is busy
-echo "Starting frontend on http://0.0.0.0:$VITE_PORT (strictPort=true)"
-(cd frontend && npm ci && npm run dev -- --host 0.0.0.0 --port $VITE_PORT --strictPort) &
+# Determine Vite port: prefer $VITE_PORT, but if busy pick a free one
+echo "Starting frontend on available port (preferred $VITE_PORT)"
+
+if ss -ltn "sport = :$VITE_PORT" | grep -q LISTEN >/dev/null 2>&1; then
+  echo "⚠️  Preferred Vite port $VITE_PORT is busy. Selecting a free port."
+  FREE_PORT=$(python - <<PY
+import socket
+s=socket.socket()
+s.bind(("127.0.0.1",0))
+port=s.getsockname()[1]
+s.close()
+print(port)
+PY
+)
+  VITE_ACTUAL_PORT=$FREE_PORT
+else
+  VITE_ACTUAL_PORT=$VITE_PORT
+fi
+
+# Start frontend
+echo "Starting frontend on http://0.0.0.0:$VITE_ACTUAL_PORT"
+(cd frontend && npm ci && npm run dev -- --host 0.0.0.0 --port $VITE_ACTUAL_PORT) &
 VITE_PID=$!
+
+# Brief health checks
+sleep 1
 
 echo "Backend PID: $UV_PID"
 echo "Frontend PID: $VITE_PID"
+
+# Wait and perform health checks
+sleep 2
+
+echo "Checking backend health at http://127.0.0.1:$PORT/health"
+if curl -sS http://127.0.0.1:$PORT/health | jq . >/dev/null 2>&1; then
+  echo "✅ Backend healthy: http://127.0.0.1:$PORT/health"
+else
+  echo "⚠️  Backend may not be healthy yet; check logs or try again."
+fi
+
+# Check frontend index
+echo "Checking frontend at http://127.0.0.1:$VITE_ACTUAL_PORT"
+if curl -sS http://127.0.0.1:$VITE_ACTUAL_PORT | grep -q "<!doctype html>" >/dev/null 2>&1; then
+  echo "✅ Frontend available: http://127.0.0.1:$VITE_ACTUAL_PORT"
+else
+  echo "⚠️  Frontend may not be reachable yet. Check Vite logs for errors or occupied ports."
+fi
 
 echo "Dev environment started. Use 'kill $UV_PID $VITE_PID' to stop processes or run scripts/doctor.sh for guidance."

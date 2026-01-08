@@ -14,7 +14,7 @@
 ./scripts/dev.ps1
 ```
 
-These scripts will create/activate a `.venv`, install minimal backend dependencies, init the DB and start both backend (8000) and frontend (5173) dev servers.
+These scripts will create/activate a `.venv`, install minimal backend dependencies, init the DB and start both backend (8000) and frontend (5173) dev servers. The scripts perform quick health checks: they call `GET /health` on the backend and request the frontend root to check it's serving HTML. If the preferred frontend port (5173) is busy, the script will choose an available ephemeral port and report the final URL to open.
 
 ## Recovering from stuck ports & common fixes
 

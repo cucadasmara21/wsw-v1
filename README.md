@@ -35,6 +35,8 @@ python init_db.py
 
 # 4. Arrancar servidor
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+> Nota sobre Windows: el archivo `requirements.txt` contiene solo las dependencias mínimas del backend (sin extras de `uvicorn` como `uvloop`) para asegurar compatibilidad con Windows/CPython 3.12 sin compilar extensiones. Si necesitas rendimiento adicional en Linux, instala manualmente extras: `pip install 'uvicorn[standard]'`.
 ```
 
 #### Windows (PowerShell / CMD) — Recomendado: Python 3.12

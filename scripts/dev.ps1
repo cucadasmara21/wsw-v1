@@ -11,9 +11,9 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
 # Activate the venv
 . .\.venv\Scripts\Activate.ps1
 
-Write-Output "Upgrading pip and installing requirements..."
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+Write-Output "Upgrading pip, setuptools and wheel, then installing requirements..."
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
 
 Write-Output "Initializing database..."
 python init_db.py

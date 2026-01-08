@@ -228,12 +228,42 @@ python init_db.py
 # 2. Start frontend (in another terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
 In Codespaces ensure ports `8000` (backend) and `5173` (frontend) are forwarded / visible.
 
+Codespaces frontend notes:
+
+- Start the frontend inside the container and bind to 0.0.0.0 so the forwarded port is reachable:
+
+```bash
+cd frontend
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+- If you see a 502 when opening the forwarded `5173` port, confirm the backend is running on `8000` and the devserver was started with `--host 0.0.0.0`.
+
+
 ---
+
+## Troubleshooting
+
+### numpy/pandas install errors on Python 3.12 ⚠️
+- If `pip install -r requirements-analytics.txt` fails with build/compilation errors, try:
+  - Ensure `pip`, `setuptools`, and `wheel` are up-to-date: `python -m pip install -U pip setuptools wheel`.
+  - Use prebuilt wheels by installing compatible versions (the file already pins `numpy>=1.26.4` and `pandas>=2.2.2`).
+  - If you must compile from source, install a suitable build toolchain (MSVC on Windows) or prefer a conda/miniforge environment.
+
+### Vite / 5173 shows 502 or blank page ⚠️
+- Common causes:
+  - The backend (`localhost:8000`) is not running — start the backend first.
+  - The frontend dev server was not bound to `0.0.0.0` — use `npm run dev -- --host 0.0.0.0` in Codespaces.
+  - Ports not forwarded in Codespaces — open Ports view and forward `5173` and `8000`.
+
+### Redis / Neo4j optional integrations 🔧
+- These services are optional; the app logs a clear warning when they are not installed or not reachable.
+- To enable them locally: `pip install -r requirements-optional.txt` and set `REDIS_URL`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` in your `.env`.
 
 ## 🧪 Testing
 

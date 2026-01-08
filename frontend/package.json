@@ -5,8 +5,28 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen:api": "openapi-typescript ../openapi.json --output src/api/generated.ts --silent"
   },
+  "dependencies": {
+    "react-router-dom": "^6.18.0",
+    "@tanstack/react-query": "^4.35.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^9.0.0",
+    "@types/node": "^25.0.3",
+    "@types/prop-types": "*",
+    "@types/estree": "*",
+    "@types/babel__core": "*",
+    "@types/babel__generator": "*",
+    "@types/babel__template": "*",
+    "@types/babel__traverse": "*",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.1.0"
+  }
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

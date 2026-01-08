@@ -14,5 +14,5 @@ pip install -r requirements.txt
 echo "Initializing database..."
 python init_db.py
 
-echo "Starting uvicorn on 0.0.0.0:8000"
-exec uvicorn main:app --host 0.0.0.0 --port 8000
+echo "Starting uvicorn on 0.0.0.0:8000 (reload enabled)"
+exec python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload

@@ -24,7 +24,7 @@ class Asset(Base):
     country = Column(String(50))
     currency = Column(String(3), default="USD")
     is_active = Column(Boolean, default=True)
-    metadata = Column(JSON, default=dict)
+    metadata_ = Column('metadata', JSON, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -70,11 +70,11 @@ class RiskMetric(Base):
     __tablename__ = "risk_metrics"
 
     time = Column(DateTime(timezone=True), primary_key=True, nullable=False)
-    asset_id = Column(Integer, ForeignKey("assets. id"), primary_key=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), primary_key=True)
     metric_name = Column(String(50), primary_key=True)
     metric_value = Column(Float(precision=12, decimal_return_scale=6))
     calculation_version = Column(String(20))
-    metadata = Column(JSON, default=dict)
+    metadata_ = Column('metadata', JSON, default=dict)
 
     asset = relationship("Asset", back_populates="risk_metrics")
 
@@ -91,7 +91,7 @@ class Alert(Base):
     triggered_at = Column(DateTime(timezone=True), server_default=func.now())
     resolved_at = Column(DateTime(timezone=True))
     is_resolved = Column(Boolean, default=False)
-    metadata = Column(JSON, default=dict)
+    metadata_ = Column('metadata', JSON, default=dict)
 
     asset = relationship("Asset")
 

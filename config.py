@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Allow unrelated env vars (e.g., PORT set by Codespaces)
 
 
 # Instancia global de configuración

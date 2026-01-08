@@ -32,7 +32,7 @@ def verify_password(plain, hashed):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime. utcnow() + expires_delta
+        expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
@@ -43,7 +43,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        username: str = payload. get("sub")
+        username: str = payload.get("sub")
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
@@ -59,7 +59,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Registrar nuevo usuario"""
     existing = db.query(User).filter(
-        (User.username == user_data. username) | (User.email == user_data.email)
+        (User.username == user_data.username) | (User.email == user_data.email)
     ).first()
 
     if existing:
@@ -67,7 +67,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
     hashed_password = get_password_hash(user_data.password)
     db_user = User(
-        username=user_data. username,
+        username=user_data.username,
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
@@ -88,12 +88,12 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    user. last_login = datetime.utcnow()
+    user.last_login = datetime.utcnow()
     db.commit()
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user. username},
+        data={"sub": user.username},
         expires_delta=access_token_expires
     )
 

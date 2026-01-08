@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install backend deps
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Initialize DB
+        run: . .venv/bin/activate && python init_db.py
+
+      - name: Start server
+        run: . .venv/bin/activate && nohup uvicorn main:app --host 127.0.0.1 --port 8000 & sleep 3
+
+      - name: Health check
+        run: curl -f http://127.0.0.1:8000/health
+
+      - name: Install frontend and build (optional)
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build

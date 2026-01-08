@@ -1,0 +1,4 @@
+# Optional integrations
+# Install only if using Redis or Neo4j in your environment
+redis>=4.7.0
+neo4j>=5.14.0

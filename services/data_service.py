@@ -4,7 +4,7 @@ SQLAlchemy 2.x compatible
 """
 from typing import List, Optional
 from datetime import datetime, timedelta
-from sqlalchemy. orm import Session
+from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
 from models import Asset, Price, RiskMetric
@@ -28,24 +28,24 @@ class DataService:
         self,
         skip: int = 0,
         limit: int = 100,
-        active_only:  bool = True,
-        category:  Optional[str] = None
+        active_only: bool = True,
+        category: Optional[str] = None
     ) -> List[Asset]:
         """Obtener lista de activos con paginación"""
         query = self.db.query(Asset)
 
         if active_only:
-            query = query.filter(Asset. is_active == True)
+            query = query.filter(Asset.is_active == True)
 
         if category:
             query = query.filter(Asset.category == category)
 
-        return query.order_by(Asset. symbol).offset(skip).limit(limit).all()
+        return query.order_by(Asset.symbol).offset(skip).limit(limit).all()
 
     def create_asset(self, asset_data: dict) -> Asset:
         """Crear un nuevo activo"""
-        existing = self.get_asset_by_symbol(asset_data. get('symbol', ''))
-        if existing: 
+        existing = self.get_asset_by_symbol(asset_data.get('symbol', ''))
+        if existing:
             return existing
 
         db_asset = Asset(**asset_data)
@@ -59,7 +59,7 @@ class DataService:
         """Contar número total de activos"""
         query = self.db.query(func.count(Asset.id))
         if active_only:
-            query = query.filter(Asset. is_active == True)
+            query = query.filter(Asset.is_active == True)
         return query.scalar() or 0
 
     def get_prices(
@@ -72,9 +72,9 @@ class DataService:
         """Obtener precios históricos para un activo"""
         query = self.db.query(Price).filter(Price.asset_id == asset_id)
 
-        if start_date: 
+        if start_date:
             query = query.filter(Price.time >= start_date)
-        if end_date: 
+        if end_date:
             query = query.filter(Price.time <= end_date)
 
         return query.order_by(desc(Price.time)).limit(limit).all()
@@ -98,10 +98,10 @@ class DataService:
         """Obtener historial de una métrica específica"""
         start_date = datetime.utcnow() - timedelta(days=days)
 
-        metrics = self.db.query(RiskMetric. time, RiskMetric.metric_value).filter(
+        metrics = self.db.query(RiskMetric.time, RiskMetric.metric_value).filter(
             RiskMetric.asset_id == asset_id,
-            RiskMetric. metric_name == metric_name,
+            RiskMetric.metric_name == metric_name,
             RiskMetric.time >= start_date
-        ).order_by(RiskMetric. time).all()
+        ).order_by(RiskMetric.time).all()
 
         return [(m[0], m[1]) for m in metrics]

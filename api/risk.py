@@ -77,7 +77,7 @@ async def get_asset_risk(
         ).order_by(RiskMetric.time).all()
 
         return {
-            "asset":  asset. to_dict(),
+            "asset":  asset.to_dict(),
             "metrics": [
                 {
                     "time": m.time,

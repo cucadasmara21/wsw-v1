@@ -14,20 +14,69 @@ cd python_services && uvicorn main:app --host 0.0.0.0 --port $PORT
 
 ### Local (Manual)
 
-```bash
-# 1. Instalar dependencias
-pip install -r python_services/requirements.txt
+#### Linux / macOS
 
-# 2. Inicializar base de datos
-cd python_services
+```bash
+# 1. Crear y activar entorno virtual
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2. Instalar dependencias mínimas (backend only)
+pip install -r requirements.txt
+
+# (Opcional) instalar dependencias de analytics e integraciones
+# - Analytics (pandas, yfinance, numpy, matplotlib):
+#   pip install -r requirements-analytics.txt
+# - Integraciones opcionales (Redis, Neo4j):
+#   pip install -r requirements-optional.txt
+
+# 3. Inicializar base de datos
 python init_db.py
 
-# 3. (OPCIONAL) Crear usuario admin
-python tools/seed_admin.py
-
 # 4. Arrancar servidor
-uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+#### Windows (PowerShell / CMD) — Recomendado: Python 3.12
+
+```powershell
+# 1. Crear entorno virtual con Python 3.12
+py -3.12 -m venv .venv
+# 2. Activar entorno (PowerShell)
+.\.venv\Scripts\Activate.ps1
+# (o CMD)
+.\.venv\Scripts\activate.bat
+
+# 3. Actualizar pip
+.\.venv\Scripts\python -m pip install -U pip setuptools wheel
+
+# 4. Instalar dependencias (backend only)
+.\.venv\Scripts\python -m pip install -r requirements.txt
+# (Opcional) analytics/integrations
+# .\.venv\Scripts\python -m pip install -r requirements-analytics.txt
+# .\.venv\Scripts\python -m pip install -r requirements-optional.txt
+
+# 5. Inicializar base de datos
+.\.venv\Scripts\python init_db.py
+
+# 6. Arrancar servidor
+.\.venv\Scripts\python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### Codespaces / DevContainer
+
+- Asegúrate de que el devcontainer use Python 3.12 (o selecciona la versión en la paleta).
+- En la terminal integrada del Codespace (Linux container):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python init_db.py
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- Habilita/expón el puerto `8000` y `5173` (frontend) desde la vista Ports en Codespaces para que sean accesibles externamente.
 
 ---
 
@@ -140,6 +189,26 @@ python_services/
 - **Schema unificado** ✅ prices(time, asset_id, ...)
 - **SQLAlchemy 2.x** ✅ text() para queries raw
 - **Admin seed manual** ✅ python tools/seed_admin.py
+- **Whitepaper técnico** 📘 Ver `WHITEPAPER.md` para la arquitectura detallada, ontología, modelos cuantitativos y roadmap
+## Frontend (dev)
+
+A minimal React + TypeScript frontend is available in `/frontend` (Vite). It uses a dev proxy so calls to `/api` and `/health` are forwarded to the backend at `http://localhost:8000`.
+
+Run locally:
+
+```bash
+# 1. Start backend (in one terminal)
+source .venv/bin/activate
+python init_db.py
+.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 2. Start frontend (in another terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+In Codespaces ensure ports `8000` (backend) and `5173` (frontend) are forwarded / visible.
 
 ---
 

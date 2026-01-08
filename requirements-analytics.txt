@@ -1,0 +1,6 @@
+# Analytics tooling (install separately — avoids compiling on install for users who don't need analytics)
+# Use versions compatible with Python 3.12+ (avoid older numpy/pandas wheels that require compilation)
+pandas>=2.2.2
+numpy>=1.26.4
+matplotlib>=3.8.0
+yfinance>=0.2.27

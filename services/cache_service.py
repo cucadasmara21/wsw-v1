@@ -28,7 +28,7 @@ class MemoryCache:
             entry = self._cache.get(key)
             if entry: 
                 if entry.get('expires_at', 0) >= time.time():
-                    return entry. get('value')
+                    return entry.get('value')
                 else: 
                     del self._cache[key]
             return None
@@ -72,8 +72,8 @@ class CacheService:
     """Servicio de caché unificado con fallback"""
 
     def __init__(self):
-        self. redis_available = redis_client is not None
-        self. memory_cache = MemoryCache()
+        self.redis_available = redis_client is not None
+        self.memory_cache = MemoryCache()
         logger.info(f"CacheService inicializado.  Redis:  {self.redis_available}")
 
     def initialize(self):
@@ -105,8 +105,8 @@ class CacheService:
     def set_json(self, key: str, value:  Any, ttl: int = 300) -> bool:
         """Establecer JSON en cache"""
         try:
-            if self. redis_available and redis_client: 
-                redis_client.setex(key, ttl, json. dumps(value))
+            if self.redis_available and redis_client: 
+                redis_client.setex(key, ttl, json.dumps(value))
         except:
             pass
 

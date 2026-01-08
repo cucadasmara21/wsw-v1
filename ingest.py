@@ -1,22 +1,34 @@
 """
-Script de ingesta de datos yfinance
+Script de ingesta de datos (yfinance) — tolerante a dependencias opcionales
 SQLAlchemy 2.x compatible
 """
 import logging
 from datetime import datetime, timedelta
-import yfinance as yf
-import pandas as pd
+
+# Inicializar logger temprano para que los mensajes de import fallido no causen NameError
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# yfinance and pandas are optional analytics dependencies; allow running the app without them.
+try:
+    import yfinance as yf
+    import pandas as pd
+except ModuleNotFoundError:
+    yf = None
+    pd = None
+    logger.warning("⚠️  analytics deps not installed: ingest disabled. Install `pip install -r requirements-analytics.txt` to enable.")
 
 from database import SessionLocal
 from models import Asset, Price
 from config import settings
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 def ingest_data():
     """Ingesta de datos de ejemplo"""
+    if yf is None or pd is None:
+        logger.error("❌ yfinance/pandas not installed. Install `requirements-analytics.txt` to use ingest.")
+        return
+
     tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'SPY', 'QQQ']
     logger.info(f"Iniciando ingesta para: {tickers}")
 
@@ -54,7 +66,7 @@ def ingest_data():
 
                 for _, row in df.iterrows():
                     price = Price(
-                        time=pd. Timestamp(row['Date']).to_pydatetime(),
+                        time=pd.Timestamp(row['Date']).to_pydatetime(),
                         asset_id=asset.id,
                         open=float(row['Open']) if pd.notna(row['Open']) else None,
                         high=float(row['High']) if pd.notna(row['High']) else None,

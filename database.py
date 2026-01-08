@@ -9,8 +9,16 @@ from typing import Optional, Generator, Dict, Any
 from sqlalchemy import create_engine, text, MetaData
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-import redis
-from neo4j import GraphDatabase
+# Redis and Neo4j are optional. Import if available, otherwise disable features gracefully.
+try:
+    import redis
+except Exception:
+    redis = None
+
+try:
+    from neo4j import GraphDatabase
+except Exception:
+    GraphDatabase = None
 
 from config import settings
 
@@ -36,41 +44,47 @@ metadata = MetaData()
 
 # ==================== REDIS (OPCIONAL) ====================
 
-redis_client:  Optional[redis.Redis] = None
-if settings.ENABLE_REDIS: 
-    try:
-        redis_client = redis.Redis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-            retry_on_timeout=False
-        )
-        redis_client.ping()
-        logger.info("✅ Redis conectado exitosamente")
-    except Exception as e:
-        logger.warning(f"⚠️  Redis no disponible: {e}. Usando cache en memoria.")
-        redis_client = None
+redis_client:  Optional["redis.Redis"] = None
+if settings.ENABLE_REDIS:
+    if redis is None:
+        logger.warning("⚠️  Redis package not installed; Redis disabled. Install `requirements-optional.txt` to enable.")
+    else:
+        try:
+            redis_client = redis.Redis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+                retry_on_timeout=False
+            )
+            redis_client.ping()
+            logger.info("✅ Redis conectado exitosamente")
+        except Exception as e:
+            logger.warning(f"⚠️  Redis no disponible: {e}. Usando cache en memoria.")
+            redis_client = None
 else:
     logger.info("ℹ️  Redis deshabilitado por configuración")
 
 # ==================== NEO4J (OPCIONAL) ====================
 
 neo4j_driver: Optional[Any] = None
-if settings. ENABLE_NEO4J: 
-    try:
-        neo4j_driver = GraphDatabase. driver(
-            settings.NEO4J_URI,
-            auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
-            connection_timeout=5
-        )
-        with neo4j_driver.session() as session:
-            session.run("RETURN 1")
-        logger.info("✅ Neo4j conectado exitosamente")
-    except Exception as e:
-        logger. warning(f"⚠️  Neo4j no disponible:  {e}. Operaciones deshabilitadas.")
-        neo4j_driver = None
-else: 
+if settings.ENABLE_NEO4J:
+    if GraphDatabase is None:
+        logger.warning("⚠️  Neo4j package not installed; Neo4j disabled. Install `requirements-optional.txt` to enable.")
+    else:
+        try:
+            neo4j_driver = GraphDatabase.driver(
+                settings.NEO4J_URI,
+                auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
+                connection_timeout=5
+            )
+            with neo4j_driver.session() as session:
+                session.run("RETURN 1")
+            logger.info("✅ Neo4j conectado exitosamente")
+        except Exception as e:
+            logger.warning(f"⚠️  Neo4j no disponible:  {e}. Operaciones deshabilitadas.")
+            neo4j_driver = None
+else:
     logger.info("ℹ️  Neo4j deshabilitado por configuración")
 
 # ==================== FUNCIONES DE UTILIDAD ====================

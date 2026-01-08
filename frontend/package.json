@@ -8,14 +8,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "vite": "^5.1.0",
+    "@types/node": "^25.0.3",
+    "@types/prop-types": "*",
+    "@types/estree": "*",
+    "@types/babel__core": "*",
+    "@types/babel__generator": "*",
+    "@types/babel__template": "*",
+    "@types/babel__traverse": "*",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.0.0",
-    "typescript": "^5.2.2",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0"
+    "typescript": "^5.9.3",
+    "vite": "^5.1.0"
   }
 }

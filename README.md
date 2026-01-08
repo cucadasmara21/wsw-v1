@@ -194,6 +194,27 @@ python_services/
 
 A minimal React + TypeScript frontend is available in `/frontend` (Vite). It uses a dev proxy so calls to `/api` and `/health` are forwarded to the backend at `http://localhost:8000`.
 
+## Scripts de desarrollo (rápido)
+
+- Linux / Codespaces (bash):
+
+```bash
+# Ejecutar desde la raíz del repositorio
+./scripts/dev.sh
+# Esto crea .venv, instala requirements.txt, ejecuta python init_db.py y arranca uvicorn en :8000 (con reload)
+```
+
+- Windows (PowerShell):
+
+```powershell
+# Ejecutar desde la raíz del repositorio
+./scripts/dev.ps1
+# Intenta usar `py -3.12` para crear el venv, instala requirements y arranca uvicorn en :8000 (con reload)
+```
+
+> Nota: El frontend del devserver usa por defecto el puerto `5173` y el backend `8000`; en Codespaces asegúrate de exponer ambos puertos.
+
+
 Run locally:
 
 ```bash

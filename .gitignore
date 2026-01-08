@@ -9,6 +9,9 @@ __pycache__/
 venv/
 ENV/
 env/
+.venv_test/
+.venv_test2/
+frontend/.venv_test/
 
 # Node
 node_modules/

@@ -16,7 +16,7 @@ from config import settings
 from database import engine, get_db, init_database, test_connections, neo4j_driver
 from models import Base
 from api import assets, risk, scenarios, auth
-from services. cache_service import cache_service
+from services.cache_service import cache_service
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -38,15 +38,15 @@ async def lifespan(app: FastAPI):
         if success:
             logger.info("✅ Base de datos inicializada")
         else:
-            logger. warning("⚠️  BD no completamente inicializada")
+            logger.warning("⚠️  BD no completamente inicializada")
     except Exception as e:
         logger.error(f"❌ Error DB: {e}")
 
     try:
         connections = test_connections()
         logger.info(f"📊 Conexiones:")
-        logger.info(f"   - PostgreSQL/SQLite: {'✅' if connections. get('postgres') else '❌'}")
-        logger.info(f"   - Redis: {'✅' if connections. get('redis') else '⊘' if connections.get('redis') is None else '❌'}")
+        logger.info(f"   - PostgreSQL/SQLite: {'✅' if connections.get('postgres') else '❌'}")
+        logger.info(f"   - Redis: {'✅' if connections.get('redis') else '⊘' if connections.get('redis') is None else '❌'}")
         logger.info(f"   - Neo4j: {'✅' if connections.get('neo4j') else '⊘' if connections.get('neo4j') is None else '❌'}")
     except Exception as e:
         logger.error(f"⚠️  Error conexiones: {e}")
@@ -187,10 +187,10 @@ async def system_status():
 async def get_config():
     return {
         "environment": settings.ENVIRONMENT,
-        "debug": settings. DEBUG,
+        "debug": settings.DEBUG,
         "database":  {
             "type": "sqlite" if settings.USE_SQLITE else "postgresql",
-            "timescale_enabled": settings. ENABLE_TIMESCALE
+            "timescale_enabled": settings.ENABLE_TIMESCALE
         },
         "cache": {
             "redis_enabled": settings.ENABLE_REDIS
@@ -214,4 +214,5 @@ if __name__ == "__main__":
         host=settings.API_HOST,
         port=settings.API_PORT,
         reload=settings.DEBUG,
-        log_level="debug" if settings.DEBUG else "info"
+        log_level="debug" if settings.DEBUG else "info",
+    )

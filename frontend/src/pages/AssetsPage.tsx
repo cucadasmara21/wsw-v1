@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { fetchJson } from '../lib/api'
+import TableList from '../components/TableList'
 
-type Asset = { id?: number; symbol?: string; name?: string }
+type Asset = { id?: number; symbol?: string; name?: string; sector?: string }
 
 export default function AssetsPage(){
   const [assets, setAssets] = useState<Asset[]>([])
@@ -18,14 +19,16 @@ export default function AssetsPage(){
   })() }, [])
 
   if (loading) return <div>Loading assets...</div>
-  if (error) return <div>Error: {error}</div>
+  if (error) return <div className="error">Error: {error}</div>
 
   return (
     <div>
       <h2>Assets</h2>
-      {assets.length === 0 ? <div>No assets yet</div> : (
-        <ul>{assets.map(a=> <li key={a.id}>{a.symbol} — {a.name}</li>)}</ul>
-      )}
+      <TableList
+        columns={["id","symbol","name","sector"]}
+        rows={assets}
+        renderCell={(row, col) => (row as any)[col] ?? '-'}
+      />
       <button onClick={()=> window.location.reload()}>Refresh</button>
     </div>
   )

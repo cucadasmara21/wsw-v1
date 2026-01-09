@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import type { Health as HealthT, Version as VersionT } from '../api/generated'
+import { fetchRootJson } from '../lib/api'
+import StatusCard from './StatusCard'
 
 export default function Health() {
   const [health, setHealth] = useState<HealthT | null>(null)
@@ -11,9 +13,7 @@ export default function Health() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/health')
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      const data = await res.json() as HealthT
+      const data = await fetchRootJson<HealthT>('/health')
       setHealth(data)
     } catch (e: any) {
       setError(e.message)
@@ -24,9 +24,7 @@ export default function Health() {
 
   const fetchVersion = async () => {
     try {
-      const res = await fetch('/version')
-      if (!res.ok) return
-      const data = await res.json() as VersionT
+      const data = await fetchRootJson<VersionT>('/version')
       setVersion(data)
     } catch (_) { }
   }
@@ -48,18 +46,27 @@ export default function Health() {
 
   return (
     <div>
-      <div>Status: <strong>{health.status}</strong></div>
-      <div>Timestamp: {health.timestamp}</div>
+      <StatusCard title="System">
+        <div>Status: <strong>{health.status}</strong></div>
+        <div>Timestamp: {health.timestamp}</div>
+        <div>API Base: <code>{import.meta.env.VITE_API_URL ?? '/api'}</code></div>
+      </StatusCard>
+
       {version && (
-        <div>Version: <strong>{version.git_sha}</strong> (built {new Date(version.build_time).toLocaleString()})</div>
+        <StatusCard title="Version">
+          <div>Version: <strong>{version.git_sha}</strong></div>
+          <div>Built: {new Date(version.build_time).toLocaleString()}</div>
+        </StatusCard>
       )}
-      <div>API Base: <code>{import.meta.env.VITE_API_URL ?? '/api'}</code></div>
-      <div>Services:</div>
-      <ul>
-        {Object.entries(health.services).map(([k, v]) => (
-          <li key={k}>{k}: {v}</li>
-        ))}
-      </ul>
+
+      <StatusCard title="Services">
+        <ul>
+          {Object.entries(health.services).map(([k, v]) => (
+            <li key={k}>{k}: {v}</li>
+          ))}
+        </ul>
+      </StatusCard>
+
       <button onClick={fetchHealth}>Refresh</button>
     </div>
   )

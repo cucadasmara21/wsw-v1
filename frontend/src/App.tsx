@@ -1,5 +1,4 @@
 import React from 'react'
-import React from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Health from './components/Health'
 import ScenarioForm from './components/ScenarioForm'

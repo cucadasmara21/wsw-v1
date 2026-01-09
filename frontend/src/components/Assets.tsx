@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { fetchJson } from '../lib/api'
 
 type Asset = {
   id?: number
@@ -16,9 +17,7 @@ export default function Assets(){
     setLoading(true)
     setError(null)
     try{
-      const res = await fetch('/api/assets')
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      const data = await res.json()
+      const data = await fetchJson<Asset[]>('/assets')
       setAssets(data)
     }catch(e: any){
       setError(e.message)

@@ -1,19 +1,9 @@
 import React, { useEffect, useState } from 'react'
-
-type Health = {
-  status: string
-  timestamp: string
-  services: Record<string, string>
-}
-
-type Version = {
-  git_sha: string
-  build_time: string
-}
+import type { Health as HealthT, Version as VersionT } from '../api/generated'
 
 export default function Health() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [version, setVersion] = useState<Version | null>(null)
+  const [health, setHealth] = useState<HealthT | null>(null)
+  const [version, setVersion] = useState<VersionT | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,7 +13,7 @@ export default function Health() {
     try {
       const res = await fetch('/health')
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      const data = await res.json()
+      const data = await res.json() as HealthT
       setHealth(data)
     } catch (e: any) {
       setError(e.message)
@@ -36,7 +26,7 @@ export default function Health() {
     try {
       const res = await fetch('/version')
       if (!res.ok) return
-      const data = await res.json()
+      const data = await res.json() as VersionT
       setVersion(data)
     } catch (_) { }
   }
@@ -63,6 +53,7 @@ export default function Health() {
       {version && (
         <div>Version: <strong>{version.git_sha}</strong> (built {new Date(version.build_time).toLocaleString()})</div>
       )}
+      <div>API Base: <code>{import.meta.env.VITE_API_URL ?? '/api'}</code></div>
       <div>Services:</div>
       <ul>
         {Object.entries(health.services).map(([k, v]) => (

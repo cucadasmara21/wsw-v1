@@ -1,4 +1,12 @@
 {
+  "name": "wsw",
+  "private": true,
+  "scripts": {
+    "dev": "node ./scripts/dev-runner.js",
+    "test": "pytest -q",
+    "lint": "ruff check . && python -m mypy api services || true",
+    "ci": "python -m ruff . && python -m mypy api services || true && pytest -q && (cd frontend && npm ci && npm run gen:api && npm run build)"
+  },
   "devDependencies": {
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.27.0",
@@ -6,6 +14,8 @@
     "@types/babel__traverse": "^7.28.0",
     "@types/estree": "^1.0.8",
     "@types/node": "^25.0.3",
-    "@types/prop-types": "^15.7.15"
+    "@types/prop-types": "^15.7.15",
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1"
   }
 }

@@ -1,35 +1,23 @@
 import React from 'react'
+import React from 'react'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Health from './components/Health'
-import Assets from './components/Assets'
 import ScenarioForm from './components/ScenarioForm'
+import AssetsPage from './pages/AssetsPage'
 
 export default function App() {
   return (
-    <div className="app">
-      <header>
-        <h1>WallStreetWar — Frontend MVP</h1>
-      </header>
-
-      <main>
-        <section className="card">
-          <h2>System Health</h2>
-          <Health />
-        </section>
-
-        <section className="card">
-          <h2>Assets</h2>
-          <Assets />
-        </section>
-
-        <section className="card">
-          <h2>Run Scenario</h2>
-          <ScenarioForm />
-        </section>
-      </main>
-
-      <footer>
-        <small>Minimal frontend — uses Vite proxy to call backend</small>
-      </footer>
-    </div>
+    <BrowserRouter>
+      <nav style={{padding:10, background:'#f3f3f3'}}>
+        <Link to="/">Status</Link> | <Link to="/assets">Assets</Link> | <Link to="/scenarios">Scenarios</Link>
+      </nav>
+      <div style={{padding:20}}>
+        <Routes>
+          <Route path="/" element={<div><h1>System</h1><Health/></div>} />
+          <Route path="/assets" element={<AssetsPage/>} />
+          <Route path="/scenarios" element={<div><h2>Scenarios</h2><ScenarioForm/></div>} />
+        </Routes>
+      </div>
+    </BrowserRouter>
   )
 }

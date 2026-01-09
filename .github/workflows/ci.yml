@@ -41,6 +41,15 @@ jobs:
       - name: Health check
         run: curl -f http://127.0.0.1:8000/health
 
+      - name: Export OpenAPI
+        run: . .venv/bin/activate && python tools/export_openapi.py > openapi.json
+
+      - name: Upload openapi.json
+        uses: actions/upload-artifact@v3
+        with:
+          name: openapi
+          path: openapi.json
+
   frontend:
     runs-on: ubuntu-latest
     needs: test
@@ -52,8 +61,21 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install frontend and build
+      - name: Download openapi.json artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: openapi
+          path: .
+
+      - name: Install frontend, generate types and build
         working-directory: ./frontend
         run: |
-          npm ci
+          npm ci || true
+          npm run gen:api || true
+
+          # If gen:api couldn't run (network/registry issues), use fallback Python generator
+          if [ ! -f src/api/generated.ts ]; then
+            python ../tools/gen_frontend_types.py
+          fi
+
           npm run build

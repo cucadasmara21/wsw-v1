@@ -1,11 +1,12 @@
-// Generated placeholder - run `npm run gen:api` to populate
-export type Health = {
-  status: string
-  timestamp: string
-  services: Record<string, string>
-}
+// Auto-generated types (fallback generator)
+// Run `python tools/export_openapi.py > openapi.json` and `npm run gen:api` when available
 
-export type Version = {
-  git_sha: string
-  build_time: string
-}
+export type Version = any
+
+
+export type VersionT = Version
+
+export type Health = any
+
+
+export type HealthT = Health

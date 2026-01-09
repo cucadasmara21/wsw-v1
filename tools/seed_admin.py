@@ -22,14 +22,14 @@ def seed_admin():
 
     try:
         # Verificar si ya existe
-        admin = db.query(User).filter(User.email == settings. ADMIN_EMAIL).first()
+        admin = db.query(User).filter(User.email == settings.ADMIN_EMAIL).first()
 
         if admin:
             print(f"✅ Usuario admin ya existe: {settings.ADMIN_EMAIL}")
             return
 
         # Crear admin
-        hashed_password = pwd_context. hash(settings.ADMIN_PASSWORD)
+        hashed_password = pwd_context.hash(settings.ADMIN_PASSWORD)
         admin_user = User(
             email=settings.ADMIN_EMAIL,
             username="admin",

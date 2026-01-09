@@ -88,6 +88,9 @@ async def lifespan(app: FastAPI):
         pass
 
 
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InvalidRequestError, NoForeignKeysError
+
 app = FastAPI(
     title="WallStreetWar API",
     description="Sistema de riesgo sistémico financiero (MVP Replit)",
@@ -96,6 +99,16 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan
 )
+
+
+@app.exception_handler(InvalidRequestError)
+async def sqlalchemy_invalid_request_handler(request, exc):
+    return JSONResponse(status_code=500, content={"detail": "Schema configuration issue: missing or ambiguous foreign key relationships (Category.assets). Summary endpoints may be affected.", "error": str(exc)})
+
+
+@app.exception_handler(NoForeignKeysError)
+async def sqlalchemy_nofk_handler(request, exc):
+    return JSONResponse(status_code=500, content={"detail": "Schema configuration issue: missing foreign key links for relationships.", "error": str(exc)})
 
 # Simple request-id middleware
 @app.middleware("http")
@@ -120,7 +133,7 @@ if settings.trusted_hosts_list:
 # Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
-app.include_router(risk. router, prefix="/api/risk", tags=["risk"])
+app.include_router(risk.router, prefix="/api/risk", tags=["risk"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
 
 

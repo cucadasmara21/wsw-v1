@@ -87,21 +87,21 @@ class Settings(BaseSettings):
     def validate_use_sqlite(cls, v, info):
         """Detectar si se usa SQLite"""
         db_url = info.data.get('DATABASE_URL', '')
-        return 'sqlite' in db_url. lower()
+        return 'sqlite' in db_url.lower()
 
     @property
     def cors_origins_list(self) -> List[str]:
         """Convierte CORS_ORIGINS a lista"""
         if not self.CORS_ORIGINS:
             return []
-        return [origin.strip() for origin in self.CORS_ORIGINS. split(',')]
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(',')]
 
     @property
     def trusted_hosts_list(self) -> List[str]:
         """Convierte TRUSTED_HOSTS a lista"""
-        if not self. TRUSTED_HOSTS:
+        if not self.TRUSTED_HOSTS:
             return []
-        return [host. strip() for host in self.TRUSTED_HOSTS.split(',')]
+        return [host.strip() for host in self.TRUSTED_HOSTS.split(',')]
 
     class Config:
         env_file = ".env"

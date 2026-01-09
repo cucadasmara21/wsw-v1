@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Esquemas Pydantic para validación y serialización
 SQLAlchemy 2.x compatible
@@ -107,10 +109,114 @@ class Token(BaseModel):
     refresh_token: Optional[str] = None
 
 
+class RiskVector(BaseModel):
+    price_risk: float
+    fundamental_risk: float
+    liquidity_risk: float
+    counterparty_risk: float
+    regime_risk: float
+
+
+class TopAsset(BaseModel):
+    asset_id: str
+    asset_name: str
+    group_name: str
+    subgroup_name: str
+    category_name: str
+    cri: float
+    risk_vector: RiskVector
+
+
+class GroupAgg(BaseModel):
+    group_name: str
+    count: int
+    cri_avg: float
+    vector_avg: RiskVector
+
+
 class RiskOverviewResponse(BaseModel):
-    asset_id: int
+    as_of: str
+    universe: int
+    cri_avg: float
+    vector_avg: RiskVector
+    top_assets: List[TopAsset]
+    by_group: List[GroupAgg]
+
+
+class RiskSummaryResponse(BaseModel):
+    as_of: str
+    universe: int
+    cri_avg: float
+    vector_avg: RiskVector
+    top_risks: Dict[str, List[TopAsset]]  # keys: price_risk, fundamental_risk, liquidity_risk, counterparty_risk, regime_risk
+
+
+class RiskSnapshotOut(BaseModel):
+    id: int
+    ts: str
+    asset_id: str
+    asset_name: str
+    group_name: str
+    subgroup_name: str
+    category_name: str
+    price_risk: float
+    fundamental_risk: float
+    liquidity_risk: float
+    counterparty_risk: float
+    regime_risk: float
+    cri: float
+
+
+class RiskSeriesPointOut(BaseModel):
+    ts: str
+    cri: float
+    price_risk: float
+    fundamental_risk: float
+    liquidity_risk: float
+    counterparty_risk: float
+    regime_risk: float
+    # schemas.py
+from datetime import datetime
+from pydantic import BaseModel
+
+
+class RiskSnapshotOut(BaseModel):
+    ts: datetime
+    price_risk: float
+    liq_risk: float
+    fund_risk: float
+    cp_risk: float
+    regime_risk: float
+    cri: float
+    model_version: str
+
+
+class AssetOut(BaseModel):
+    id: int
     symbol: str
-    current_price: Optional[float] = None
-    cri:  Optional[float] = None
-    risk_level: str
-    last_updated: datetime
+    name: str
+    asset_type: str
+    category_id: int
+
+
+class AssetDetailOut(AssetOut):
+    latest: RiskSnapshotOut | None = None
+
+
+class PagedAssetsOut(BaseModel):
+    total: int
+    items: list[AssetOut]
+
+
+class RiskSummaryRow(BaseModel):
+    level: str  # group|subgroup|category
+    id: int
+    name: str
+    parent_id: int | None = None
+    avg_cri: float
+    avg_price_risk: float
+    avg_liq_risk: float
+    avg_fund_risk: float
+    avg_cp_risk: float
+    avg_regime_risk: float
+    n_assets: int

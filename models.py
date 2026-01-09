@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Modelos SQLAlchemy unificados
 Compatible con SQLAlchemy 2.x
@@ -30,6 +32,8 @@ class Asset(Base):
 
     prices = relationship("Price", back_populates="asset", cascade="all, delete-orphan")
     risk_metrics = relationship("RiskMetric", back_populates="asset", cascade="all, delete-orphan")
+    # Compatibility: keep risk_snapshots relationship expected by other modules
+    risk_snapshots = relationship("RiskSnapshot", back_populates="asset", cascade="all, delete-orphan")
 
     def to_dict(self):
         """Convertir a diccionario para serialización"""
@@ -37,12 +41,12 @@ class Asset(Base):
             "id": self.id,
             "symbol": self.symbol,
             "name": self.name,
-            "sector": self. sector,
+            "sector": self.sector,
             "category": self.category,
             "exchange": self.exchange,
             "country": self.country,
             "currency": self.currency,
-            "is_active": self. is_active,
+            "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at":  self.updated_at.isoformat() if self.updated_at else None
         }
@@ -109,3 +113,80 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True))
+    # models.py
+
+# (comentarios opcionales)
+"""docstring opcional"""
+
+from datetime import datetime
+from typing import Optional, List
+
+from sqlalchemy import (
+    String, Integer, Float, DateTime, ForeignKey, Index
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from database import Base
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+
+    subgroups: Mapped[List["Subgroup"]] = relationship(back_populates="group", cascade="all, delete-orphan")
+
+
+class Subgroup(Base):
+    __tablename__ = "subgroups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+
+    group: Mapped["Group"] = relationship(back_populates="subgroups")
+    categories: Mapped[List["Category"]] = relationship(back_populates="subgroup", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_subgroups_group_name", "group_id", "name", unique=True),
+    )
+
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subgroup_id: Mapped[int] = mapped_column(ForeignKey("subgroups.id"), index=True)
+    name: Mapped[str] = mapped_column(String(140), index=True)
+
+    subgroup: Mapped["Subgroup"] = relationship(back_populates="categories")
+    assets: Mapped[List["Asset"]] = relationship("Asset", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_categories_subgroup_name", "subgroup_id", "name", unique=True),
+    )
+
+
+class RiskSnapshot(Base):
+    __tablename__ = "risk_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+
+    ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+    price_risk: Mapped[float] = mapped_column(Float)
+    liq_risk: Mapped[float] = mapped_column(Float)
+    fund_risk: Mapped[float] = mapped_column(Float)
+    cp_risk: Mapped[float] = mapped_column(Float)
+    regime_risk: Mapped[float] = mapped_column(Float)
+
+    cri: Mapped[float] = mapped_column(Float, index=True)
+    model_version: Mapped[str] = mapped_column(String(32), default="mvp-0.1")
+
+    asset: Mapped["Asset"] = relationship(back_populates="risk_snapshots")
+
+    __table_args__ = (
+        Index("ix_risk_asset_ts", "asset_id", "ts"),
+    )

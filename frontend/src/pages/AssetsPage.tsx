@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { fetchJson } from '../lib/api'
+import { fetchApiJson } from '../lib/api'
 import TableList from '../components/TableList'
 
-type Asset = { id?: number; symbol?: string; name?: string; sector?: string }
+type Asset = { id?: number; symbol?: string; name?: string; exchange?: string; country?: string; is_active?: boolean }
 
 export default function AssetsPage(){
   const [assets, setAssets] = useState<Asset[]>([])
@@ -12,7 +12,7 @@ export default function AssetsPage(){
   useEffect(()=>{ (async ()=>{
     setLoading(true)
     try{
-      const data = await fetchJson<Asset[]>('/assets')
+      const data = await fetchApiJson<Asset[]>('/assets')
       setAssets(data)
     }catch(e:any){ setError(e.message) }
     setLoading(false)
@@ -25,9 +25,13 @@ export default function AssetsPage(){
     <div>
       <h2>Assets</h2>
       <TableList
-        columns={["id","symbol","name","sector"]}
+        columns={["id","symbol","name","exchange","country","is_active"]}
         rows={assets}
-        renderCell={(row, col) => (row as any)[col] ?? '-'}
+        renderCell={(row, col) => {
+          const v = (row as any)[col]
+          if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+          return v ?? '-'
+        }}
       />
       <button onClick={()=> window.location.reload()}>Refresh</button>
     </div>

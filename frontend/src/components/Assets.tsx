@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { fetchJson } from '../lib/api'
+import { fetchApiJson } from '../lib/api'
 
 type Asset = {
   id?: number

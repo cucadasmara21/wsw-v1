@@ -1,29 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
+kill_port() { 
+local PORT="$1" 
+if command -v lsof >/dev/null 2>&1; then 
+local PIDS 
+PIDS="$(lsof -t -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | sort -u || true)" 
+if [[ -z "$PIDS" ]]; then 
+echo "[ports] $PORT free" 
+return 0 
+fi 
+for PID in $PIDS; do 
+local ARGS 
+ARGS="$(ps -p "$PID" -o args= 2>/dev/null || true)" 
+# Only kill related things (uvicorn/vite/npm dev) 
+if [[ "$ARGS" == *"uvicorn"* || "$ARGS" == *"vite"* || "$ARGS" == *"npm run dev"* ]]; then 
+echo "[ports] Killing PID $PID in $PORT: $ARGS" 
+kill -9 "$PID" 2>/dev/null || true 
+else 
+echo "[ports] DON'T kill PID $PID in $PORT (doesn't look like uvicorn/vite): $ARGS" 
+fi 
+done 
+else 
+echo "[ports] lsof not available, fallback pkill" 
+fi 
 
-# Kill uvicorn and vite/node processes bound to ports 8000 and 5173.
-# First try pkill by process name (uvicorn, vite, npm, node)
-# Then fallback to lsof to find PIDs bound to the port.
-
-echo "[scripts/kill_ports.sh] Killing uvicorn and vite/node processes (ports 8000, 5173)"
-
-# pkill patterns (ignore errors)
-pkill -f uvicorn || true
-pkill -f "vite" || true
-pkill -f "npm run dev" || true
-pkill -f "node" || true
-
-# Fallback: lsof -t to find PIDs and kill if still present
-if command -v lsof >/dev/null 2>&1; then
-  for p in 8000 5173; do
-    pids=$(lsof -t -i :${p} || true)
-    if [ -n "$pids" ]; then
-      echo "[scripts/kill_ports.sh] Killing PIDs on port ${p}: $pids"
-      kill -9 $pids || true
-    fi
-  done
-else
-  echo "[scripts/kill_ports.sh] lsof not available; pkill attempted only"
-fi
-
-echo "[scripts/kill_ports.sh] Done."
+# Fallback by pattern (without killing generic 'node') 
+pkill -f "uvicorn.*--port 8000" 2>/dev/null || true 
+pkill -f "vite.*5173" 2>/dev/null || true 
+pkill -f "npm run dev.*5173" 2>/dev/null || true
+}
+kill_port 8000
+kill_port 5173
+echo "[ports] done"

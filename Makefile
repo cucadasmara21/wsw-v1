@@ -3,15 +3,15 @@
 
 # Start backend in the foreground (open T1)
 backend:
-	./scripts/run_backend.sh
+	bash ./scripts/run_backend.sh
 
 # Start frontend dev server in the foreground (open T2)
 frontend:
-	./scripts/run_frontend.sh
+	bash ./scripts/run_frontend.sh
 
 # Free ports used by backend/frontend (8000, 5173)
 ports:
-	./scripts/kill_ports.sh
+	bash ./scripts/kill_ports.sh
 
 # Print recommended 3-terminal developer workflow (do NOT use concurrency here)
 dev:

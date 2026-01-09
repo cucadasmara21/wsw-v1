@@ -1,9 +1,26 @@
 # Makefile - developer conveniences
-.PHONY: dev doctor install ci
+.PHONY: dev doctor install ci backend frontend ports
 
-# Start both backend and frontend dev env (uses scripts/dev.sh)
+# Start backend in the foreground (open T1)
+backend:
+	./scripts/run_backend.sh
+
+# Start frontend dev server in the foreground (open T2)
+frontend:
+	./scripts/run_frontend.sh
+
+# Free ports used by backend/frontend (8000, 5173)
+ports:
+	./scripts/kill_ports.sh
+
+# Print recommended 3-terminal developer workflow (do NOT use concurrency here)
 dev:
-	./scripts/dev.sh
+	@echo "Developer workflow (use THREE terminals):"
+	@echo "  T1: make backend       # runs backend (blocks frontend)"
+	@echo "  T2: make frontend      # runs frontend dev server"
+	@echo "  T3: make ports && curl http://localhost:8000/health  # free ports and health check"
+	@echo ""
+	@echo "Note: Open one terminal per process; do not run both backend and frontend in the same shell with concurrency tools."
 
 # Run local checks
 doctor:

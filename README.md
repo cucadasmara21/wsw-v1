@@ -222,12 +222,36 @@ Usa el `Makefile` para comandos comunes (Linux / macOS / Codespaces):
 # Instalar todo (backend + frontend)
 make install
 
-# Arrancar ambos (backend + frontend)
-make dev
-
 # Ejecutar checks locales / diagnóstico
 make doctor
 ```
+
+### Flujo recomendado de 3 terminales (rápido, fiable) 🔧
+
+Sigue este flujo con 3 terminales separados (T1/T2/T3):
+
+- T1: Ejecuta el backend (bloqueante):
+
+```bash
+make backend
+```
+
+- T2: Ejecuta el frontend (bloqueante):
+
+```bash
+make frontend
+```
+
+- T3: Uso de utilidades y comprobaciones (libera puertos y comprueba salud):
+
+```bash
+make ports
+curl http://localhost:8000/health
+```
+
+> ✅ Comprueba que `/health` responde y devuelve `status: "healthy"`.
+
+Nota: No uses concurrency dentro de una misma terminal; abre 3 terminales para procesos con salida en primer plano.
 
 Nota: Si usas el `dev` a través de `node ./scripts/dev-runner.js` (el `npm run dev` raíz), asegúrate de correr `npm ci` en la raíz para instalar `concurrently` (el script intentará hacerlo automáticamente si falta).
 > Nota: El frontend del devserver usa por defecto el puerto `5173` y el backend `8000`; en Codespaces asegúrate de exponer ambos puertos.

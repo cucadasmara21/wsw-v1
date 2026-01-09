@@ -214,6 +214,22 @@ A minimal React + TypeScript frontend is available in `/frontend` (Vite). It use
 # Intenta usar `py -3.12` para crear el venv, instala requirements y arranca uvicorn en :8000 (con reload)
 ```
 
+### Developer DX (rápido) ✅
+
+Usa el `Makefile` para comandos comunes (Linux / macOS / Codespaces):
+
+```bash
+# Instalar todo (backend + frontend)
+make install
+
+# Arrancar ambos (backend + frontend)
+make dev
+
+# Ejecutar checks locales / diagnóstico
+make doctor
+```
+
+Nota: Si usas el `dev` a través de `node ./scripts/dev-runner.js` (el `npm run dev` raíz), asegúrate de correr `npm ci` en la raíz para instalar `concurrently` (el script intentará hacerlo automáticamente si falta).
 > Nota: El frontend del devserver usa por defecto el puerto `5173` y el backend `8000`; en Codespaces asegúrate de exponer ambos puertos.
 
 Para más detalles de arranque rápido, troubleshooting y comandos de verificación, ver `docs/DEVELOPMENT.md`.

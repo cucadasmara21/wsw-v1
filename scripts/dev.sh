@@ -7,6 +7,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# Ensure root node dev deps (concurrently) are available so `npm run dev` works
+if command -v node >/dev/null 2>&1; then
+  if ! node -e "require('concurrently')" >/dev/null 2>&1; then
+    echo "Installing root node devDependencies (concurrently) so 'npm run dev' works"
+    npm ci --omit=optional --no-audit --no-fund || true
+  fi
+fi
+
 : ${PORT:=8000}
 VITE_PORT=5173
 
@@ -70,6 +78,9 @@ VITE_PID=$!
 
 # Brief health checks
 sleep 1
+
+# Ensure processes are cleaned up on exit
+trap 'echo "Stopping dev processes..."; kill ${VITE_PID:-} ${UV_PID:-} 2>/dev/null || true' EXIT
 
 echo "Backend PID: $UV_PID"
 echo "Frontend PID: $VITE_PID"

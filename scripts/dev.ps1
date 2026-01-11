@@ -1,75 +1,143 @@
-# PowerShell dev script for Windows
-Set-StrictMode -Version Latest
+#!/usr/bin/env pwsh
+# Dev helper for Windows (PowerShell)
+# Starts backend (uvicorn) on PORT 8000 and frontend (vite) on 5173
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Definition
-Set-Location $Root/..
+$ErrorActionPreference = "Stop"
 
-$PORT = 8000
-$VITE_PORT = 5173
+# Navigate to repo root
+$ROOT_DIR = Split-Path -Parent $PSScriptRoot
+Set-Location $ROOT_DIR
 
-function Test-PortBusy($port) {
-    try {
-        $c = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
-        if ($null -ne $c) { Write-Output "⚠️ Port $port appears in use: $($c.OwningProcess)" }
-    } catch { }
+Write-Host "🚀 WallStreetWar Dev Environment - Windows" -ForegroundColor Cyan
+Write-Host ""
+
+# Check Python
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    Write-Host "❌ Python not found in PATH. Install Python 3.12+ and try again." -ForegroundColor Red
+    exit 1
 }
 
-Test-PortBusy $PORT
-Test-PortBusy $VITE_PORT
+$pythonVersion = python --version 2>&1
+Write-Host "✅ Python: $pythonVersion" -ForegroundColor Green
 
-Write-Output "Creating virtualenv .venv (try py -3.12 then python)..."
-if (Get-Command py -ErrorAction SilentlyContinue) {
-    py -3.12 -m venv .venv
-} else {
+# Check Node
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "❌ Node.js not found in PATH. Install Node.js 18+ and try again." -ForegroundColor Red
+    exit 1
+}
+
+$nodeVersion = node --version
+Write-Host "✅ Node.js: $nodeVersion" -ForegroundColor Green
+Write-Host ""
+
+# Backend port check
+$PORT = if ($env:PORT) { $env:PORT } else { 8000 }
+try {
+    $portCheck = Get-NetTCPConnection -LocalPort $PORT -ErrorAction SilentlyContinue
+    if ($portCheck) {
+        Write-Host "❌ Port $PORT is busy. Kill the process:" -ForegroundColor Red
+        Write-Host "   Get-Process -Id (Get-NetTCPConnection -LocalPort $PORT).OwningProcess | Stop-Process" -ForegroundColor Yellow
+        exit 1
+    }
+} catch { }
+
+# Frontend port check
+$VITE_PORT = 5173
+try {
+    $vitePortCheck = Get-NetTCPConnection -LocalPort $VITE_PORT -ErrorAction SilentlyContinue
+    if ($vitePortCheck) {
+        Write-Host "❌ Port $VITE_PORT is busy. Kill the process:" -ForegroundColor Red
+        Write-Host "   Get-Process -Id (Get-NetTCPConnection -LocalPort $VITE_PORT).OwningProcess | Stop-Process" -ForegroundColor Yellow
+        exit 1
+    }
+} catch { }
+
+# Check .env file
+if (-not (Test-Path ".env")) {
+    Write-Host "⚠️  .env file not found. Copying from .env.example..." -ForegroundColor Yellow
+    if (Test-Path ".env.example") {
+        Copy-Item ".env.example" ".env"
+        Write-Host "✅ Created .env from .env.example" -ForegroundColor Green
+        Write-Host "   Review .env and adjust settings if needed." -ForegroundColor Cyan
+    } else {
+        Write-Host "❌ .env.example not found. Create .env manually." -ForegroundColor Red
+        exit 1
+    }
+}
+
+Write-Host ""
+Write-Host "📦 Setting up Python environment..." -ForegroundColor Cyan
+
+# Create venv if missing
+if (-not (Test-Path ".venv")) {
+    Write-Host "Creating virtual environment..."
     python -m venv .venv
 }
 
-# Activate the venv
-. .\.venv\Scripts\Activate.ps1
+# Activate venv
+Write-Host "Activating virtual environment..."
+& ".\.venv\Scripts\Activate.ps1"
 
-Write-Output "Upgrading pip and installing requirements..."
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+# Upgrade pip
+Write-Host "Upgrading pip..."
+python -m pip install --upgrade pip --quiet
 
-Write-Output "Initializing database..."
+# Install dependencies
+Write-Host "Installing Python dependencies..."
+pip install -r requirements.txt --quiet
+
+# Initialize database
+Write-Host ""
+Write-Host "🗄️  Initializing database..." -ForegroundColor Cyan
 python init_db.py
 
-Write-Output "Starting backend on http://127.0.0.1:$PORT"
-Start-Process -NoNewWindow -FilePath python -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port $PORT --reload"
-Start-Sleep -Seconds 1
-
-# Determine frontend port; if preferred $VITE_PORT busy, pick a free ephemeral port
-function Test-PortBusy($port) {
-    try {
-        $c = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
-        return ($null -ne $c)
-    } catch { return $false }
-}
-
-if (Test-PortBusy $VITE_PORT) {
-    Write-Output "⚠️ Preferred Vite port $VITE_PORT is busy; selecting a free port"
-    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse("127.0.0.1"),0)
-    $listener.Start()
-    $freePort = $listener.LocalEndpoint.Port
-    $listener.Stop()
-    $VITE_ACTUAL_PORT = $freePort
+Write-Host ""
+Write-Host "📦 Setting up frontend..." -ForegroundColor Cyan
+Set-Location frontend
+if (-not (Test-Path "node_modules")) {
+    Write-Host "Installing npm dependencies..."
+    npm ci --silent
 } else {
-    $VITE_ACTUAL_PORT = $VITE_PORT
+    Write-Host "✅ node_modules already installed" -ForegroundColor Green
+}
+Set-Location ..
+
+Write-Host ""
+Write-Host "🚀 Starting services..." -ForegroundColor Cyan
+Write-Host "   Backend:  http://localhost:$PORT" -ForegroundColor Green
+Write-Host "   Frontend: http://localhost:$VITE_PORT" -ForegroundColor Green
+Write-Host ""
+Write-Host "Press Ctrl+C to stop all services" -ForegroundColor Yellow
+Write-Host ""
+
+# Start backend in new window for easier visibility
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$ROOT_DIR'; .\.venv\Scripts\Activate.ps1; python -m uvicorn main:app --host 127.0.0.1 --port $PORT --reload"
+
+# Wait for backend
+Start-Sleep -Seconds 4
+
+# Start frontend in new window
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$ROOT_DIR\frontend'; npm run dev -- --host 127.0.0.1 --port $VITE_PORT"
+
+# Wait and check health
+Start-Sleep -Seconds 3
+
+try {
+    $health = Invoke-RestMethod -Uri "http://127.0.0.1:$PORT/health" -TimeoutSec 5
+    Write-Host "✅ Backend health check passed" -ForegroundColor Green
+    Write-Host "   Status: $($health.status)" -ForegroundColor Gray
+} catch {
+    Write-Host "⚠️  Backend health check failed. Check the backend window for errors." -ForegroundColor Yellow
 }
 
-Write-Output "Starting frontend on http://0.0.0.0:$VITE_ACTUAL_PORT"
-Push-Location frontend
-npm ci
-Start-Process -NoNewWindow -FilePath npm -ArgumentList "run dev -- --host 0.0.0.0 --port $VITE_ACTUAL_PORT"
-Pop-Location
-
-Start-Sleep -Seconds 2
-
-# Health checks
-Write-Output "Checking backend health at http://127.0.0.1:$PORT/health"
-try { $r = Invoke-WebRequest -Uri "http://127.0.0.1:$PORT/health" -UseBasicParsing -ErrorAction Stop; Write-Output "✅ Backend health OK" } catch { Write-Output "⚠️ Backend health check failed" }
-
-Write-Output "Checking frontend at http://127.0.0.1:$VITE_ACTUAL_PORT"
-try { $r2 = Invoke-WebRequest -Uri "http://127.0.0.1:$VITE_ACTUAL_PORT" -UseBasicParsing -ErrorAction Stop; Write-Output "✅ Frontend reachable" } catch { Write-Output "⚠️ Frontend check failed" }
-
-Write-Output "Dev environment started. Use Stop-Process -Id <pid> to stop processes or run scripts/doctor.ps1 for guidance."
+Write-Host ""
+Write-Host "================================" -ForegroundColor Cyan
+Write-Host "🎉 Development environment ready!" -ForegroundColor Green
+Write-Host "================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Open in browser:" -ForegroundColor White
+Write-Host "  Frontend: http://localhost:$VITE_PORT" -ForegroundColor Cyan
+Write-Host "  Backend:  http://localhost:$PORT/docs" -ForegroundColor Cyan
+Write-Host "  Health:   http://localhost:$PORT/health" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Close the PowerShell windows to stop services" -ForegroundColor Yellow

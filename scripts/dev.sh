@@ -7,26 +7,47 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# Ensure root node dev deps (concurrently) are available so `npm run dev` works
-if command -v node >/dev/null 2>&1; then
-  if ! node -e "require('concurrently')" >/dev/null 2>&1; then
-    echo "Installing root node devDependencies (concurrently) so 'npm run dev' works"
-    npm ci --omit=optional --no-audit --no-fund || true
-  fi
+echo "🚀 WallStreetWar Dev Environment - Linux/macOS"
+echo ""
+
+# Check Python
+if ! command -v python3 &>/dev/null && ! command -v python &>/dev/null; then
+    echo "❌ Python not found. Install Python 3.10+ and try again."
+    exit 1
 fi
 
+PYTHON_CMD=$(command -v python3 || command -v python)
+PYTHON_VERSION=$($PYTHON_CMD --version 2>&1)
+echo "✅ Python: $PYTHON_VERSION"
+
+# Check Node
+if ! command -v node &>/dev/null; then
+    echo "❌ Node.js not found. Install Node.js 18+ and try again."
+    exit 1
+fi
+
+NODE_VERSION=$(node --version)
+echo "✅ Node.js: $NODE_VERSION"
+echo ""
+
+# Port configuration
 : ${PORT:=8000}
 VITE_PORT=5173
 
+# Check if ports are busy
 warn_if_busy() {
   local port=$1
   if command -v ss >/dev/null 2>&1; then
-    if ss -ltn "sport = :$port" | grep -q LISTEN; then
-      echo "⚠️  Port $port appears to be in use. Run scripts/doctor.sh to investigate."
+    if ss -ltn "sport = :$port" 2>/dev/null | grep -q LISTEN; then
+      echo "❌ Port $port is busy. Kill the process using:"
+      echo "   lsof -ti:$port | xargs kill -9"
+      exit 1
     fi
   elif command -v lsof >/dev/null 2>&1; then
     if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-      echo "⚠️  Port $port appears to be in use. Run scripts/doctor.sh to investigate."
+      echo "❌ Port $port is busy. Kill the process using:"
+      echo "   lsof -ti:$port | xargs kill -9"
+      exit 1
     fi
   fi
 }
@@ -34,73 +55,104 @@ warn_if_busy() {
 warn_if_busy "$PORT"
 warn_if_busy "$VITE_PORT"
 
-echo "Creating/activating virtualenv .venv (Python 3.x)"
-python -m venv .venv || true
-# shellcheck source=/dev/null
-. .venv/bin/activate
+# Check .env file
+if [ ! -f ".env" ]; then
+    echo "⚠️  .env file not found."
+    if [ -f ".env.example" ]; then
+        echo "Creating .env from .env.example..."
+        cp .env.example .env
+        echo "✅ Created .env from .env.example"
+        echo "   Review .env and adjust settings if needed."
+    else
+        echo "❌ .env.example not found. Create .env manually."
+        exit 1
+    fi
+fi
 
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+echo ""
+echo "📦 Setting up Python environment..."
 
-echo "Initializing database..."
+# Create venv if missing
+if [ ! -d ".venv" ]; then
+    echo "Creating virtual environment..."
+    $PYTHON_CMD -m venv .venv
+fi
+
+# Activate venv
+echo "Activating virtual environment..."
+source .venv/bin/activate
+
+# Upgrade pip
+echo "Upgrading pip..."
+python -m pip install --upgrade pip --quiet
+
+# Install dependencies
+echo "Installing Python dependencies..."
+pip install -r requirements.txt --quiet
+
+# Initialize database
+echo ""
+echo "🗄️  Initializing database..."
 python init_db.py
+
+echo ""
+echo "📦 Setting up frontend..."
+cd frontend
+if [ ! -d "node_modules" ]; then
+    echo "Installing npm dependencies..."
+    npm ci --silent
+else
+    echo "✅ node_modules already installed"
+fi
+cd ..
+
+echo ""
+echo "🚀 Starting services..."
+echo "   Backend:  http://localhost:$PORT"
+echo "   Frontend: http://localhost:$VITE_PORT"
+echo ""
+echo "Press Ctrl+C to stop all services"
+echo ""
 
 # Start backend in background
 echo "Starting backend on http://127.0.0.1:$PORT"
 python -m uvicorn main:app --host 127.0.0.1 --port "$PORT" --reload &
 UV_PID=$!
 
-sleep 1
+# Wait a bit for backend to start
+sleep 3
 
-# Determine Vite port: prefer $VITE_PORT, but if busy pick a free one
-echo "Starting frontend on available port (preferred $VITE_PORT)"
-
-if ss -ltn "sport = :$VITE_PORT" | grep -q LISTEN >/dev/null 2>&1; then
-  echo "⚠️  Preferred Vite port $VITE_PORT is busy. Selecting a free port."
-  FREE_PORT=$(python - <<PY
-import socket
-s=socket.socket()
-s.bind(("127.0.0.1",0))
-port=s.getsockname()[1]
-s.close()
-print(port)
-PY
-)
-  VITE_ACTUAL_PORT=$FREE_PORT
-else
-  VITE_ACTUAL_PORT=$VITE_PORT
-fi
-
-# Start frontend
-echo "Starting frontend on http://0.0.0.0:$VITE_ACTUAL_PORT"
-(cd frontend && npm ci && npm run dev -- --host 0.0.0.0 --port $VITE_ACTUAL_PORT) &
+# Start frontend in background
+echo "Starting frontend on http://127.0.0.1:$VITE_PORT"
+(cd frontend && npm run dev -- --host 127.0.0.1 --port $VITE_PORT) &
 VITE_PID=$!
 
-# Brief health checks
-sleep 1
-
 # Ensure processes are cleaned up on exit
-trap 'echo "Stopping dev processes..."; kill ${VITE_PID:-} ${UV_PID:-} 2>/dev/null || true' EXIT
+trap 'echo ""; echo "🛑 Stopping services..."; kill ${VITE_PID:-} ${UV_PID:-} 2>/dev/null || true; echo "✅ All services stopped"; exit' EXIT INT TERM
 
-echo "Backend PID: $UV_PID"
-echo "Frontend PID: $VITE_PID"
+# Wait and check health
+sleep 3
 
-# Wait and perform health checks
-sleep 2
-
-echo "Checking backend health at http://127.0.0.1:$PORT/health"
-if curl -sS http://127.0.0.1:$PORT/health | jq . >/dev/null 2>&1; then
-  echo "✅ Backend healthy: http://127.0.0.1:$PORT/health"
+echo ""
+echo "Checking backend health..."
+if curl -sS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+  echo "✅ Backend health check passed"
 else
-  echo "⚠️  Backend may not be healthy yet; check logs or try again."
+  echo "⚠️  Backend health check failed. Check logs above."
 fi
 
-# Check frontend index
-echo "Checking frontend at http://127.0.0.1:$VITE_ACTUAL_PORT"
-if curl -sS http://127.0.0.1:$VITE_ACTUAL_PORT | grep -q "<!doctype html>" >/dev/null 2>&1; then
-  echo "✅ Frontend available: http://127.0.0.1:$VITE_ACTUAL_PORT"
-else
-  echo "⚠️  Frontend may not be reachable yet. Check Vite logs for errors or occupied ports."
-fi
+echo ""
+echo "================================"
+echo "🎉 Development environment ready!"
+echo "================================"
+echo ""
+echo "Open in browser:"
+echo "  Frontend: http://localhost:$VITE_PORT"
+echo "  Backend:  http://localhost:$PORT/docs"
+echo "  Health:   http://localhost:$PORT/health"
+echo ""
+echo "Press Ctrl+C to stop all services"
+echo ""
 
-echo "Dev environment started. Use 'kill $UV_PID $VITE_PID' to stop processes or run scripts/doctor.sh for guidance."
+# Wait indefinitely
+wait

@@ -1,103 +1,230 @@
 # 🏦 WallStreetWar - Sistema de Riesgo Sistémico Financiero
 
-**MVP para Replit** - Backend FastAPI sin Docker, lazy init para servicios opcionales. 
+**MVP para Replit y Codespaces** - Backend FastAPI + Frontend React/TypeScript con configuración unificada. 
 
-## 🚀 Arranque Rápido
+---
 
-### En Replit (Automático)
+## 🚀 Quickstart (Un Comando)
 
-El archivo `.replit` ejecuta automáticamente:
-
-```bash
-cd python_services && uvicorn main:app --host 0.0.0.0 --port $PORT
-```
-
-### Local (Manual)
-
-#### Linux / macOS
-
-```bash
-# 1. Crear y activar entorno virtual
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 2. Instalar dependencias mínimas (backend only)
-pip install -r requirements.txt
-
-# (Opcional) instalar dependencias de analytics e integraciones
-# - Analytics (pandas, yfinance, numpy, matplotlib):
-#   pip install -r requirements-analytics.txt
-# - Integraciones opcionales (Redis, Neo4j):
-#   pip install -r requirements-optional.txt
-
-# 3. Inicializar base de datos
-python init_db.py
-
-# 4. Arrancar servidor
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-> Nota sobre Windows: el archivo `requirements.txt` contiene solo las dependencias mínimas del backend (sin extras de `uvicorn` como `uvloop`) para asegurar compatibilidad con Windows/CPython 3.12 sin compilar extensiones. Si necesitas rendimiento adicional en Linux, instala manualmente extras: `pip install 'uvicorn[standard]'`.
-```
-
-#### Windows (PowerShell / CMD) — Recomendado: Python 3.12
+### Windows (PowerShell)
 
 ```powershell
-# 1. Crear entorno virtual con Python 3.12
-py -3.12 -m venv .venv
-# 2. Activar entorno (PowerShell)
-.\.venv\Scripts\Activate.ps1
-# (o CMD)
-.\.venv\Scripts\activate.bat
-
-# 3. Actualizar pip
-.\.venv\Scripts\python -m pip install -U pip setuptools wheel
-
-# 4. Instalar dependencias (backend only)
-.\.venv\Scripts\python -m pip install -r requirements.txt
-# (Opcional) analytics/integrations
-# .\.venv\Scripts\python -m pip install -r requirements-analytics.txt
-# .\.venv\Scripts\python -m pip install -r requirements-optional.txt
-
-# 5. Inicializar base de datos
-.\.venv\Scripts\python init_db.py
-
-# 6. Arrancar servidor
-.\.venv\Scripts\python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Desde la raíz del repositorio
+.\scripts\dev.ps1
 ```
 
-#### Codespaces / DevContainer
+Esto hará:
+- ✅ Verificar Python y Node.js
+- ✅ Crear `.env` si no existe
+- ✅ Crear virtualenv e instalar dependencias
+- ✅ Inicializar base de datos
+- ✅ Iniciar backend en http://localhost:8000
+- ✅ Iniciar frontend en http://localhost:5173
 
-- Asegúrate de que el devcontainer use Python 3.12 (o selecciona la versión en la paleta).
-- En la terminal integrada del Codespace (Linux container):
+**Verificar:**
+```powershell
+# Salud del backend
+curl http://localhost:8000/health
+
+# Abrir frontend en el navegador
+start http://localhost:5173
+```
+
+### Linux / macOS / Codespaces
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python init_db.py
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Desde la raíz del repositorio
+./scripts/dev.sh
 ```
 
-- Habilita/expón el puerto `8000` y `5173` (frontend) desde la vista Ports en Codespaces para que sean accesibles externamente.
+Esto hará:
+- ✅ Verificar Python y Node.js
+- ✅ Crear `.env` si no existe
+- ✅ Crear virtualenv e instalar dependencias
+- ✅ Inicializar base de datos
+- ✅ Iniciar backend en http://localhost:8000
+- ✅ Iniciar frontend en http://localhost:5173
+
+**Verificar:**
+```bash
+# Salud del backend
+curl http://localhost:8000/health
+
+# Abrir frontend en el navegador (o usa la vista Ports en Codespaces)
+```
+
+---
+
+## ✅ Verificación del Sistema
+
+Antes de arrancar, puedes verificar que todo esté configurado correctamente:
+
+### Windows
+```powershell
+.\scripts\check.ps1
+```
+
+### Linux / macOS / Codespaces
+```bash
+./scripts/check.sh
+```
+
+Esto comprueba:
+- Python y Node.js instalados
+- Virtualenv y dependencias instaladas
+- Base de datos inicializada
+- Archivo `.env` presente
+- Puertos 8000 y 5173 disponibles
 
 ---
 
 ## 🔌 Endpoints Principales
 
-### 1️⃣ Health Check (Sin credenciales)
+Una vez iniciado el backend:
 
+### Health Check (sin autenticación)
 ```bash
-curl -X GET http://localhost:8000/health
+curl http://localhost:8000/health
 ```
 
-**Respuesta esperada:**
+Respuesta esperada:
 ```json
 {
   "status": "healthy",
-  "timestamp": "2026-01-04T14:30:45.123456",
+  "timestamp": "2026-01-11T...",
   "services": {
     "database": "healthy",
     "cache": "unavailable",
+    "neo4j": "unavailable"
+  }
+}
+```
+
+### API Docs
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### Otros endpoints
+- `/api/assets` - Gestión de activos
+- `/api/risk/overview` - Visión general de riesgo
+- `/api/scenarios/run` - Ejecutar escenarios
+- `/api/auth/token` - Autenticación JWT
+
+---
+
+## 🔧 Troubleshooting
+
+### Puerto 8000 o 5173 ocupado
+
+**Síntoma:** Error al iniciar: "Port 8000 is busy"
+
+**Windows:**
+```powershell
+# Ver qué proceso usa el puerto
+Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess
+
+# Matar el proceso
+Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess | Stop-Process
+```
+
+**Linux/macOS:**
+```bash
+# Ver qué proceso usa el puerto
+lsof -i:8000
+
+# Matar el proceso
+lsof -ti:8000 | xargs kill -9
+```
+
+### Archivo .env faltante
+
+**Síntoma:** Advertencia "⚠️ .env file not found"
+
+**Solución:**
+```bash
+# Linux/macOS
+cp .env.example .env
+
+# Windows
+Copy-Item .env.example .env
+```
+
+Luego edita `.env` según sea necesario. Por defecto usa SQLite y no requiere configuración adicional.
+
+### Python o Node.js no encontrado
+
+**Síntoma:** "❌ Python not found" o "❌ Node.js not found"
+
+**Solución:**
+- **Python:** Instala Python 3.10+ desde [python.org](https://python.org)
+- **Node.js:** Instala Node.js 18+ desde [nodejs.org](https://nodejs.org)
+
+### Virtualenv no activado
+
+**Síntoma:** "ModuleNotFoundError: No module named 'fastapi'"
+
+**Solución:**
+```bash
+# Linux/macOS/Codespaces
+source .venv/bin/activate
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# Windows CMD
+.\.venv\Scripts\activate.bat
+```
+
+### Base de datos no inicializada
+
+**Síntoma:** Errores relacionados con tablas faltantes
+
+**Solución:**
+```bash
+# Asegúrate de que el virtualenv esté activado primero
+python init_db.py
+```
+
+### CORS errors en el navegador
+
+**Síntoma:** "Access to fetch at 'http://localhost:8000/api/...' from origin 'http://localhost:5173' has been blocked by CORS policy"
+
+**Solución:**
+1. Verifica que `.env` incluya ambos puertos:
+   ```env
+   CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8000
+   ```
+2. Reinicia el backend después de cambiar `.env`
+
+### Frontend muestra página en blanco
+
+**Síntoma:** `http://localhost:5173` carga pero no muestra contenido
+
+**Posibles causas:**
+1. **Backend no está corriendo** - Verifica http://localhost:8000/health
+2. **Error en el proxy de Vite** - Revisa la consola del navegador y los logs de terminal
+3. **Dependencias frontend faltantes** - Ejecuta `cd frontend && npm ci`
+
+### Problemas en Codespaces
+
+**Puertos no accesibles:**
+1. Ve a la vista "Ports" en VS Code
+2. Asegúrate de que los puertos 8000 y 5173 estén reenviados
+3. Cambia la visibilidad a "Public" si es necesario
+
+**Backend/Frontend no inician:**
+- Usa `--host 0.0.0.0` en lugar de `127.0.0.1`:
+  ```bash
+  # Backend
+  uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+  
+  # Frontend
+  cd frontend && npm run dev -- --host 0.0.0.0 --port 5173
+  ```
+
+---
+
+## 📁 Estructura del Proyecto
     "neo4j": "unavailable"
   },
   "environment": "development",
@@ -111,208 +238,159 @@ curl -X GET http://localhost:8000/health
 curl -X GET "http://localhost:8000/api/assets? limit=10"
 ```
 
-**Respuesta esperada (array vacío inicialmente):**
-```json
-[]
 ```
-
-### 3️⃣ Visión de Riesgo
-
-```bash
-curl -X GET "http://localhost:8000/api/risk/overview?limit=10"
-```
-
----
-
-## 🔑 Variables de Entorno
-
-Copiar `.env.example` a `.env` en `python_services/`:
-
-```bash
-cp python_services/.env.example python_services/.env
-```
-
-### Configuración por defecto (SQLite):
-
-```env
-ENVIRONMENT=development
-DEBUG=true
-DATABASE_URL=sqlite:///./wsw.db
-ENABLE_TIMESCALE=false
-ADMIN_EMAIL=admin@wsw.local
-ADMIN_PASSWORD=admin123456
-```
-
-### Para PostgreSQL + TimescaleDB:
-
-```env
-DATABASE_URL=postgresql://user:password@host:5432/wsw
-ENABLE_TIMESCALE=true
-```
-
----
-
-## 📁 Estructura
-
-```
-python_services/
+/ (raíz del repositorio)
 ├── main.py                   ← Entrypoint FastAPI
 ├── config.py                 ← Configuración (pydantic-settings)
-├── database. py               ← Conexiones SQL+Redis+Neo4j
-├── models.py                 ← ORM SQLAlchemy (prices, assets, risk_metrics, users, alerts)
-├── schemas.py                ← Pydantic (validación)
-├── init_db.py                ← Inicializar BD
-├── ingest.py                 ← Ingesta yfinance
+├── database.py               ← Conexiones SQL+Redis+Neo4j
+├── models.py                 ← ORM SQLAlchemy
+├── schemas.py                ← Validación Pydantic
+├── init_db.py                ← Script de inicialización de BD
+├── ingest.py                 ← Ingesta de datos (yfinance)
+├── requirements.txt          ← Dependencias mínimas
+├── requirements-analytics.txt← Dependencias opcionales (pandas, yfinance)
+├── requirements-optional.txt ← Redis, Neo4j
+├── .env.example              ← Plantilla de configuración
 ├── api/
-│   ├── __init__.py
 │   ├── assets.py             ← GET /api/assets
 │   ├── risk.py               ← GET /api/risk/overview
 │   ├── scenarios.py          ← POST /api/scenarios/run
 │   └── auth.py               ← POST /api/auth/token
 ├── services/
-│   ├── __init__.py
-│   ├── data_service.py       ← CRUD activos/precios/métricas
-│   └── cache_service.py      ← Cache Redis+Memory fallback
+│   ├── data_service.py       ← Lógica de negocio
+│   └── cache_service.py      ← Cache con fallback
 ├── tools/
-│   ├── __init__.py
-│   └── seed_admin.py         ← Crear admin (manual)
-├── requirements.txt
-└── . env. example
+│   └── seed_admin.py         ← Crear usuario admin
+├── scripts/
+│   ├── dev.sh                ← Script de desarrollo (Linux/macOS)
+│   ├── dev.ps1               ← Script de desarrollo (Windows)
+│   ├── check.sh              ← Verificación del sistema (Linux/macOS)
+│   └── check.ps1             ← Verificación del sistema (Windows)
+└── frontend/
+    ├── src/
+    │   ├── main.tsx          ← Entry point
+    │   ├── App.tsx           ← Componente principal
+    │   ├── components/       ← Componentes React
+    │   ├── pages/            ← Páginas de la app
+    │   └── api/              ← Cliente API TypeScript
+    ├── vite.config.ts        ← Configuración Vite (con proxy)
+    └── package.json
 ```
 
 ---
 
 ## ✨ Características
 
-- **SQLite por defecto** ✅ Funciona en Replit sin setup
-- **PostgreSQL + TimescaleDB** ✅ Optional via ENABLE_TIMESCALE
+- **SQLite por defecto** ✅ Funciona sin configuración adicional
+- **PostgreSQL + TimescaleDB** ✅ Opcional vía `ENABLE_TIMESCALE`
 - **Redis opcional** ✅ Fallback automático a memoria
-- **Neo4j opcional** ✅ No crashea si no está disponible
-- **Schema unificado** ✅ prices(time, asset_id, ...)
-- **SQLAlchemy 2.x** ✅ text() para queries raw
-- **Admin seed manual** ✅ python tools/seed_admin.py
-- **Whitepaper técnico** 📘 Ver `WHITEPAPER.md` para la arquitectura detallada, ontología, modelos cuantitativos y roadmap
-## Frontend (dev)
-
-A minimal React + TypeScript frontend is available in `/frontend` (Vite). It uses a dev proxy so calls to `/api` and `/health` are forwarded to the backend at `http://localhost:8000`.
-
-## Scripts de desarrollo (rápido)
-
-- Linux / Codespaces (bash):
-
-```bash
-# Ejecutar desde la raíz del repositorio
-./scripts/dev.sh
-# Esto crea .venv, instala requirements.txt, ejecuta python init_db.py y arranca uvicorn en :8000 (con reload)
-```
-
-- Windows (PowerShell):
-
-```powershell
-# Ejecutar desde la raíz del repositorio
-./scripts/dev.ps1
-# Intenta usar `py -3.12` para crear el venv, instala requirements y arranca uvicorn en :8000 (con reload)
-```
-
-### Developer DX (rápido) ✅
-
-Usa el `Makefile` para comandos comunes (Linux / macOS / Codespaces):
-
-```bash
-# Instalar todo (backend + frontend)
-make install
-
-# Ejecutar checks locales / diagnóstico
-make doctor
-```
-
-### Flujo recomendado de 3 terminales (rápido, fiable) 🔧
-
-Sigue este flujo con 3 terminales separados (T1/T2/T3):
-
-- T1: Ejecuta el backend (bloqueante):
-
-```bash
-make backend
-```
-
-- T2: Ejecuta el frontend (bloqueante):
-
-```bash
-make frontend
-```
-
-- T3: Uso de utilidades y comprobaciones (libera puertos y comprueba salud):
-
-```bash
-make ports
-curl http://localhost:8000/health
-```
-
-> ✅ Comprueba que `/health` responde y devuelve `status: "healthy"`.
-
-Nota: No uses concurrency dentro de una misma terminal; abre 3 terminales para procesos con salida en primer plano.
-
-Nota: Si usas el `dev` a través de `node ./scripts/dev-runner.js` (el `npm run dev` raíz), asegúrate de correr `npm ci` en la raíz para instalar `concurrently` (el script intentará hacerlo automáticamente si falta).
-> Nota: El frontend del devserver usa por defecto el puerto `5173` y el backend `8000`; en Codespaces asegúrate de exponer ambos puertos.
-
-Para más detalles de arranque rápido, troubleshooting y comandos de verificación, ver `docs/DEVELOPMENT.md`.
-
-
-Run locally:
-
-```bash
-# 1. Start backend (in one terminal)
-source .venv/bin/activate
-python init_db.py
-.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# 2. Start frontend (in another terminal)
-cd frontend
-npm install
-npm run dev -- --host 0.0.0.0 --port 5173
-```
-
-In Codespaces ensure ports `8000` (backend) and `5173` (frontend) are forwarded / visible.
-
-Codespaces frontend notes:
-
-- Start the frontend inside the container and bind to 0.0.0.0 so the forwarded port is reachable:
-
-```bash
-cd frontend
-npm run dev -- --host 0.0.0.0 --port 5173
-```
-
-- If you see a 502 when opening the forwarded `5173` port, confirm the backend is running on `8000` and the devserver was started with `--host 0.0.0.0`.
-
+- **Neo4j opcional** ✅ No falla si no está disponible
+- **Frontend React/TypeScript** ✅ Con proxy Vite integrado
+- **Scripts cross-platform** ✅ Un comando en Windows, Linux o Codespaces
+- **SQLAlchemy 2.x** ✅ ORM moderno
+- **FastAPI** ✅ API moderna con documentación automática
+- **Whitepaper técnico** 📘 Ver `WHITEPAPER.md` para arquitectura detallada
 
 ---
 
-## Troubleshooting
+## 🔑 Variables de Entorno
 
-### numpy/pandas install errors on Python 3.12 ⚠️
-- If `pip install -r requirements-analytics.txt` fails with build/compilation errors, try:
-  - Ensure `pip`, `setuptools`, and `wheel` are up-to-date: `python -m pip install -U pip setuptools wheel`.
-  - Use prebuilt wheels by installing compatible versions (the file already pins `numpy>=1.26.4` and `pandas>=2.2.2`).
-  - If you must compile from source, install a suitable build toolchain (MSVC on Windows) or prefer a conda/miniforge environment.
+El archivo `.env.example` contiene todas las configuraciones necesarias. Los scripts de desarrollo lo copian automáticamente a `.env` si no existe.
 
-### Vite / 5173 shows 502 or blank page ⚠️
-- Common causes:
-  - The backend (`localhost:8000`) is not running — start the backend first.
-  - The frontend dev server was not bound to `0.0.0.0` — use `npm run dev -- --host 0.0.0.0` in Codespaces.
-  - Ports not forwarded in Codespaces — open Ports view and forward `5173` and `8000`.
+### Configuración por defecto (SQLite)
 
-### Redis / Neo4j optional integrations 🔧
-- These services are optional; the app logs a clear warning when they are not installed or not reachable.
-- To enable them locally: `pip install -r requirements-optional.txt` and set `REDIS_URL`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` in your `.env`.
+```env
+ENVIRONMENT=development
+DEBUG=true
+DATABASE_URL=sqlite:///./wsw.db
+ENABLE_TIMESCALE=false
+SECRET_KEY=your-secret-key-change-in-production
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8000
+```
 
-## 🧪 Testing
+### Para PostgreSQL + TimescaleDB
 
-Después de arrancar, prueba los 3 endpoints:
+```env
+DATABASE_URL=postgresql://user:password@host:5432/wsw
+ENABLE_TIMESCALE=true
+```
+
+### Para habilitar Redis (opcional)
+
+```env
+REDIS_URL=redis://localhost:6379/0
+```
+
+### Para habilitar Neo4j (opcional)
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+```
+
+---
+
+## 🧪 Testing Manual
+
+Después de iniciar con `./scripts/dev.sh` o `.\scripts\dev.ps1`:
 
 ```bash
-# 1. Health
+# 1. Health check
 curl http://localhost:8000/health
 
-# 2. Assets (vacío inicialmente)
+# 2. Listar activos (vacío inicialmente)
+curl http://localhost:8000/api/assets
+
+# 3. Ver configuración
+curl http://localhost:8000/api/config
+
+# 4. Ver documentación interactiva
+# Abrir en navegador: http://localhost:8000/docs
+```
+
+---
+
+## 📚 Documentación Adicional
+
+- **Whitepaper técnico:** Ver [WHITEPAPER.md](WHITEPAPER.md) para arquitectura detallada, ontología, modelos cuantitativos y roadmap
+- **Guía de desarrollo:** Ver [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) para flujos de trabajo avanzados
+- **Guía de pre-commit:** Ver [docs/PRECOMMIT.md](docs/PRECOMMIT.md) para hooks y validaciones
+
+---
+
+## 🤝 Contribuir
+
+1. Fork el repositorio
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+---
+
+## 📝 Licencia
+
+Este proyecto es un MVP académico/demostrativo para análisis de riesgo sistémico financiero.
+
+---
+
+## 🆘 Soporte
+
+Si tienes problemas:
+
+1. **Primero:** Ejecuta el script de verificación
+   - Windows: `.\scripts\check.ps1`
+   - Linux/macOS: `./scripts/check.sh`
+
+2. **Revisa la sección de Troubleshooting** arriba
+
+3. **Consulta logs:**
+   - Backend: Revisa la salida de la terminal donde corre uvicorn
+   - Frontend: Revisa la consola del navegador (F12)
+
+4. **Abre un issue** en GitHub con:
+   - Sistema operativo
+   - Versiones de Python y Node.js
+   - Salida del comando que falla
+   - Logs relevantes

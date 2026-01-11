@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "gen:api": "openapi-typescript ../openapi.json --output src/api/generated.ts --silent",
+    "gen:api": "openapi-typescript ../docs/openapi.json --output src/api/generated.ts --silent",
     "test": "vitest",
     "test:run": "vitest run"
   },

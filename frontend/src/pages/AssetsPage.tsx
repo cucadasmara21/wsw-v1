@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { fetchApiJson } from '../lib/api'
+// TODO: Migrate to typed client:
+// import { typedGet, type Asset } from '../api/client'
 import TableList from '../components/TableList'
 
 type Asset = { id?: number; symbol?: string; name?: string; exchange?: string; country?: string; is_active?: boolean }

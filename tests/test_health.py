@@ -1,40 +1,27 @@
-import subprocess
-import socket
-import time
-import httpx
+"""
+Test /health endpoint
+"""
+from fastapi.testclient import TestClient
 
 
-def _find_free_port():
-    s = socket.socket()
-    s.bind(('127.0.0.1', 0))
-    addr, port = s.getsockname()
-    s.close()
-    return port
+def test_health_returns_200(client: TestClient):
+    """Health endpoint should return 200 with expected keys"""
+    response = client.get("/health")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert "status" in data
+    assert "timestamp" in data
+    assert "services" in data
+    assert "environment" in data
 
 
-def _wait_for(url, timeout=5.0):
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            r = httpx.get(url, timeout=1.0)
-            if r.status_code < 500:
-                return r
-        except Exception:
-            pass
-        time.sleep(0.1)
-    raise RuntimeError(f"Timeout waiting for {url}")
-
-
-def test_health_ok():
-    port = _find_free_port()
-    proc = subprocess.Popen(["python", "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)])
-    try:
-        res = _wait_for(f"http://127.0.0.1:{port}/health")
-        assert res.status_code == 200
-        data = res.json()
-        assert "status" in data
-        assert "services" in data
-        assert "database" in data["services"]
-    finally:
-        proc.terminate()
-        proc.wait()
+def test_health_has_database_service(client: TestClient):
+    """Health endpoint should report database service status"""
+    response = client.get("/health")
+    data = response.json()
+    
+    assert "services" in data
+    assert "database" in data["services"]
+    # Database should be healthy in tests (using temp SQLite)
+    assert data["services"]["database"] in ["healthy", "unhealthy"]

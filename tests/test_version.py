@@ -1,40 +1,38 @@
-import subprocess
-import socket
-import time
-import httpx
+"""
+Test /version endpoint
+"""
+from fastapi.testclient import TestClient
 
 
-def _find_free_port():
-    s = socket.socket()
-    s.bind(('127.0.0.1', 0))
-    addr, port = s.getsockname()
-    s.close()
-    return port
+def test_version_returns_200(client: TestClient):
+    """Version endpoint should return 200 with required fields"""
+    response = client.get("/version")
+    assert response.status_code == 200
+    
+    data = response.json()
+    # These fields must exist (can be null/empty but must be present)
+    assert "app" in data
+    assert "version" in data
+    assert "git_sha" in data
+    assert "build_time" in data
+    assert "environment" in data
+    assert "debug" in data
 
 
-def _wait_for(url, timeout=5.0):
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            r = httpx.get(url, timeout=1.0)
-            if r.status_code < 500:
-                return r
-        except Exception:
-            pass
-        time.sleep(0.1)
-    raise RuntimeError(f"Timeout waiting for {url}")
+def test_version_git_sha_is_string(client: TestClient):
+    """git_sha should be a string (even if empty)"""
+    response = client.get("/version")
+    data = response.json()
+    
+    assert isinstance(data["git_sha"], str)
+    # Can be empty in test environment, that's OK
 
 
-def test_version_has_fields():
-    port = _find_free_port()
-    proc = subprocess.Popen(["python", "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)])
-    try:
-        res = _wait_for(f"http://127.0.0.1:{port}/version")
-        assert res.status_code == 200
-        data = res.json()
-        assert "git_sha" in data
-        assert "build_time" in data
-        assert isinstance(data["git_sha"], str)
-    finally:
-        proc.terminate()
-        proc.wait()
+def test_version_has_app_name(client: TestClient):
+    """App name should be present"""
+    response = client.get("/version")
+    data = response.json()
+    
+    assert data["app"] is not None
+    assert isinstance(data["app"], str)
+    assert len(data["app"]) > 0

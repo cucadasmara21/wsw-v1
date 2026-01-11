@@ -34,11 +34,21 @@ BUILD_INFO = {
 }
 
 # Logger - Structured logging with request tracking
+class RequestIDFilter(logging.Filter):
+    """Add request_id to all log records"""
+    def filter(self, record):
+        if not hasattr(record, 'request_id'):
+            record.request_id = 'startup'
+        return True
+
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
+logger.addFilter(RequestIDFilter())
+# Also add filter to root logger
+logging.getLogger().addFilter(RequestIDFilter())
 
 
 @asynccontextmanager

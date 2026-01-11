@@ -220,3 +220,52 @@ class RiskSummaryRow(BaseModel):
     avg_cp_risk: float
     avg_regime_risk: float
     n_assets: int
+
+
+class MarketBar(BaseModel):
+    ts: datetime
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float
+    volume: int | None = None
+    source: str | None = None
+
+
+class MarketBarsResponse(BaseModel):
+    symbol: str
+    interval: str
+    limit: int
+    count: int
+    bars: List[MarketBar]
+
+
+class MarketIndicators(BaseModel):
+    sma20: float | None
+    rsi14: float | None
+    volatility: float | None
+    drawdown: float | None
+    returns_1: float | None
+    returns_n: float | None
+
+
+class MarketRiskComponents(BaseModel):
+    distance_from_sma: float | None = None
+    rsi: float | None = None
+    volatility: float | None = None
+    drawdown: float | None = None
+    momentum: float | None = None
+
+
+class MarketRisk(BaseModel):
+    score_total_0_100: float
+    components: MarketRiskComponents
+
+
+class MarketSnapshotResponse(BaseModel):
+    symbol: str
+    timeframe: str
+    last_price: float
+    timestamp: datetime
+    indicators: MarketIndicators
+    risk: MarketRisk

@@ -15,7 +15,17 @@ export interface paths {
         put?: never;
         /**
          * Register
-         * @description Registrar nuevo usuario
+         * @description Register a new user account.
+         *
+         *     Args:
+         *         user_data (UserCreate): User registration data including username, email, password, full_name, and role.
+         *         db (Session): Database session (dependency injected).
+         *
+         *     Returns:
+         *         UserSchema: The newly created user object.
+         *
+         *     Raises:
+         *         HTTPException: 400 if username or email already exists.
          */
         post: operations["register_api_auth_register_post"];
         delete?: never;
@@ -35,7 +45,17 @@ export interface paths {
         put?: never;
         /**
          * Login
-         * @description Obtener token de acceso
+         * @description Authenticate user and return JWT access token.
+         *
+         *     Args:
+         *         form_data (OAuth2PasswordRequestForm): Username and password from form submission.
+         *         db (Session): Database session (dependency injected).
+         *
+         *     Returns:
+         *         Token: Object containing access_token and token_type ("bearer").
+         *
+         *     Raises:
+         *         HTTPException: 401 if username not found or password verification fails.
          */
         post: operations["login_api_auth_token_post"];
         delete?: never;
@@ -64,24 +84,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/assets/": {
+    "/api/assets": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Assets
-         * @description Obtener lista de activos
-         */
-        get: operations["get_assets_api_assets__get"];
+        /** List Assets */
+        get: operations["list_assets_api_assets_get"];
         put?: never;
-        /**
-         * Create Asset
-         * @description Crear un nuevo activo
-         */
-        post: operations["create_asset_api_assets__post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -95,11 +108,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Asset
-         * @description Obtener un activo por ID
-         */
-        get: operations["get_asset_api_assets__asset_id__get"];
+        /** Asset Detail */
+        get: operations["asset_detail_api_assets__asset_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -108,18 +118,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/assets/summary/stats": {
+    "/api/assets/{asset_id}/risk_history": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Assets Summary
-         * @description Obtener resumen estadístico de activos
-         */
-        get: operations["get_assets_summary_api_assets_summary_stats_get"];
+        /** Asset Risk History */
+        get: operations["asset_risk_history_api_assets__asset_id__risk_history_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -137,9 +144,48 @@ export interface paths {
         };
         /**
          * Get Risk Overview
-         * @description Obtener visión general de riesgo para todos los activos
+         * @description Return an aggregated risk overview as of the latest snapshot per asset.
+         *     Uses sqlite3 direct queries against the configured DATABASE_URL sqlite file (avoids SQLAlchemy/ORM).
          */
         get: operations["get_risk_overview_api_risk_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/risk/summary_sql": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Summary Sql
+         * @description Return a summary using raw sqlite3 queries (SQL-only fallback for /summary).
+         *     This avoids SQLAlchemy mapper FK issues by querying `risk_snapshots` directly.
+         */
+        get: operations["risk_summary_sql_api_risk_summary_sql_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/risk/timeseries/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Risk Timeseries */
+        get: operations["get_risk_timeseries_api_risk_timeseries__asset_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -168,6 +214,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/risk/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Summary
+         * @description Return aggregated risk rows per group/subgroup/category using SQL joins (avoid ORM relationship inference).
+         *     Uses latest snapshot per asset (max ts).
+         */
+        get: operations["risk_summary_api_risk_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/risk/top": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Top Risks
+         * @description Return top assets by latest CRI using raw SQL to avoid mapper FK issues.
+         */
+        get: operations["top_risks_api_risk_top_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scenarios/run": {
         parameters: {
             query?: never;
@@ -179,9 +266,57 @@ export interface paths {
         put?: never;
         /**
          * Run Stress Scenario
-         * @description Ejecutar un escenario de estrés predefinido
+         * @description Execute a predefined stress test scenario.
+         *
+         *     Args:
+         *         scenario_name (str): Name of the scenario to run. Supported scenarios:
+         *             - `market_crash`: Simulates 2008 market crash (-50% SPY shock)
+         *             - `covid_crash`: Simulates 2020 COVID crash (-35% SPY shock)
+         *
+         *     Returns:
+         *         dict: Scenario execution result with status, timestamp, and completion message.
+         *
+         *     Raises:
+         *         HTTPException: 404 if scenario_name not found in predefined scenarios.
          */
         post: operations["run_stress_scenario_api_scenarios_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market/bars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get OHLCV bars
+         * @description Return normalized OHLCV bars using yfinance (cached) without pandas dependency.
+         */
+        get: operations["get_market_bars_api_market_bars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compute indicators and risk snapshot */
+        get: operations["get_market_snapshot_api_market_snapshot_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -231,7 +366,7 @@ export interface paths {
         };
         /**
          * Version
-         * @description Return build info including git sha and build time
+         * @description Return build info including git sha, build time, and environment
          */
         get: operations["version_version_get"];
         put?: never;
@@ -280,46 +415,32 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** Asset */
-        Asset: {
-            /** Symbol */
-            symbol: string;
-            /** Name */
-            name?: string | null;
-            /** Sector */
-            sector?: string | null;
-            /** Category */
-            category?: string | null;
-            /** Exchange */
-            exchange?: string | null;
-            /** Country */
-            country?: string | null;
+        /** AssetDetailOut */
+        AssetDetailOut: {
             /** Id */
             id: number;
-            /** Is Active */
-            is_active: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Updated At */
-            updated_at?: string | null;
-        };
-        /** AssetCreate */
-        AssetCreate: {
             /** Symbol */
             symbol: string;
             /** Name */
-            name?: string | null;
-            /** Sector */
-            sector?: string | null;
-            /** Category */
-            category?: string | null;
-            /** Exchange */
-            exchange?: string | null;
-            /** Country */
-            country?: string | null;
+            name: string;
+            /** Asset Type */
+            asset_type: string;
+            /** Category Id */
+            category_id: number;
+            latest?: components["schemas"]["RiskSnapshotOut"] | null;
+        };
+        /** AssetOut */
+        AssetOut: {
+            /** Id */
+            id: number;
+            /** Symbol */
+            symbol: string;
+            /** Name */
+            name: string;
+            /** Asset Type */
+            asset_type: string;
+            /** Category Id */
+            category_id: number;
         };
         /** Body_login_api_auth_token_post */
         Body_login_api_auth_token_post: {
@@ -339,28 +460,215 @@ export interface components {
             /** Client Secret */
             client_secret?: string | null;
         };
+        /** GroupAgg */
+        GroupAgg: {
+            /** Group Name */
+            group_name: string;
+            /** Count */
+            count: number;
+            /** Cri Avg */
+            cri_avg: number;
+            vector_avg: components["schemas"]["RiskVector"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** RiskOverviewResponse */
-        RiskOverviewResponse: {
-            /** Asset Id */
-            asset_id: number;
-            /** Symbol */
-            symbol: string;
-            /** Current Price */
-            current_price?: number | null;
-            /** Cri */
-            cri?: number | null;
-            /** Risk Level */
-            risk_level: string;
+        /** MarketBar */
+        MarketBar: {
             /**
-             * Last Updated
+             * Ts
              * Format: date-time
              */
-            last_updated: string;
+            ts: string;
+            /** Open */
+            open?: number | null;
+            /** High */
+            high?: number | null;
+            /** Low */
+            low?: number | null;
+            /** Close */
+            close: number;
+            /** Volume */
+            volume?: number | null;
+            /** Source */
+            source?: string | null;
+        };
+        /** MarketBarsResponse */
+        MarketBarsResponse: {
+            /** Symbol */
+            symbol: string;
+            /** Interval */
+            interval: string;
+            /** Limit */
+            limit: number;
+            /** Count */
+            count: number;
+            /** Bars */
+            bars: components["schemas"]["MarketBar"][];
+        };
+        /** MarketIndicators */
+        MarketIndicators: {
+            /** Sma20 */
+            sma20: number | null;
+            /** Rsi14 */
+            rsi14: number | null;
+            /** Volatility */
+            volatility: number | null;
+            /** Drawdown */
+            drawdown: number | null;
+            /** Returns 1 */
+            returns_1: number | null;
+            /** Returns N */
+            returns_n: number | null;
+        };
+        /** MarketRisk */
+        MarketRisk: {
+            /** Score Total 0 100 */
+            score_total_0_100: number;
+            components: components["schemas"]["MarketRiskComponents"];
+        };
+        /** MarketRiskComponents */
+        MarketRiskComponents: {
+            /** Distance From Sma */
+            distance_from_sma?: number | null;
+            /** Rsi */
+            rsi?: number | null;
+            /** Volatility */
+            volatility?: number | null;
+            /** Drawdown */
+            drawdown?: number | null;
+            /** Momentum */
+            momentum?: number | null;
+        };
+        /** MarketSnapshotResponse */
+        MarketSnapshotResponse: {
+            /** Symbol */
+            symbol: string;
+            /** Timeframe */
+            timeframe: string;
+            /** Last Price */
+            last_price: number;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            indicators: components["schemas"]["MarketIndicators"];
+            risk: components["schemas"]["MarketRisk"];
+        };
+        /** PagedAssetsOut */
+        PagedAssetsOut: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["AssetOut"][];
+        };
+        /** RiskOverviewResponse */
+        RiskOverviewResponse: {
+            /** As Of */
+            as_of: string;
+            /** Universe */
+            universe: number;
+            /** Cri Avg */
+            cri_avg: number;
+            vector_avg: components["schemas"]["RiskVector"];
+            /** Top Assets */
+            top_assets: components["schemas"]["TopAsset"][];
+            /** By Group */
+            by_group: components["schemas"]["GroupAgg"][];
+        };
+        /** RiskSeriesPointOut */
+        RiskSeriesPointOut: {
+            /** Ts */
+            ts: string;
+            /** Cri */
+            cri: number;
+            /** Price Risk */
+            price_risk: number;
+            /** Fundamental Risk */
+            fundamental_risk: number;
+            /** Liquidity Risk */
+            liquidity_risk: number;
+            /** Counterparty Risk */
+            counterparty_risk: number;
+            /** Regime Risk */
+            regime_risk: number;
+        };
+        /** RiskSnapshotOut */
+        RiskSnapshotOut: {
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Price Risk */
+            price_risk: number;
+            /** Liq Risk */
+            liq_risk: number;
+            /** Fund Risk */
+            fund_risk: number;
+            /** Cp Risk */
+            cp_risk: number;
+            /** Regime Risk */
+            regime_risk: number;
+            /** Cri */
+            cri: number;
+            /** Model Version */
+            model_version: string;
+        };
+        /** RiskSummaryResponse */
+        RiskSummaryResponse: {
+            /** As Of */
+            as_of: string;
+            /** Universe */
+            universe: number;
+            /** Cri Avg */
+            cri_avg: number;
+            vector_avg: components["schemas"]["RiskVector"];
+            /** Top Risks */
+            top_risks: {
+                [key: string]: components["schemas"]["TopAsset"][];
+            };
+        };
+        /** RiskSummaryRow */
+        RiskSummaryRow: {
+            /** Level */
+            level: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: number | null;
+            /** Avg Cri */
+            avg_cri: number;
+            /** Avg Price Risk */
+            avg_price_risk: number;
+            /** Avg Liq Risk */
+            avg_liq_risk: number;
+            /** Avg Fund Risk */
+            avg_fund_risk: number;
+            /** Avg Cp Risk */
+            avg_cp_risk: number;
+            /** Avg Regime Risk */
+            avg_regime_risk: number;
+            /** N Assets */
+            n_assets: number;
+        };
+        /** RiskVector */
+        RiskVector: {
+            /** Price Risk */
+            price_risk: number;
+            /** Fundamental Risk */
+            fundamental_risk: number;
+            /** Liquidity Risk */
+            liquidity_risk: number;
+            /** Counterparty Risk */
+            counterparty_risk: number;
+            /** Regime Risk */
+            regime_risk: number;
         };
         /** Token */
         Token: {
@@ -370,6 +678,22 @@ export interface components {
             token_type: string;
             /** Refresh Token */
             refresh_token?: string | null;
+        };
+        /** TopAsset */
+        TopAsset: {
+            /** Asset Id */
+            asset_id: string;
+            /** Asset Name */
+            asset_name: string;
+            /** Group Name */
+            group_name: string;
+            /** Subgroup Name */
+            subgroup_name: string;
+            /** Category Name */
+            category_name: string;
+            /** Cri */
+            cri: number;
+            risk_vector: components["schemas"]["RiskVector"];
         };
         /** User */
         User: {
@@ -516,13 +840,14 @@ export interface operations {
             };
         };
     };
-    get_assets_api_assets__get: {
+    list_assets_api_assets_get: {
         parameters: {
             query?: {
-                skip?: number;
+                /** @description Search by symbol or name */
+                q?: string | null;
+                category_id?: number | null;
                 limit?: number;
-                active_only?: boolean;
-                category?: string | null;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -536,7 +861,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Asset"][];
+                    "application/json": components["schemas"]["PagedAssetsOut"];
                 };
             };
             /** @description Validation Error */
@@ -550,40 +875,7 @@ export interface operations {
             };
         };
     };
-    create_asset_api_assets__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssetCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Asset"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_asset_api_assets__asset_id__get: {
+    asset_detail_api_assets__asset_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -600,7 +892,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Asset"];
+                    "application/json": components["schemas"]["AssetDetailOut"];
                 };
             };
             /** @description Validation Error */
@@ -614,7 +906,71 @@ export interface operations {
             };
         };
     };
-    get_assets_summary_api_assets_summary_stats_get: {
+    asset_risk_history_api_assets__asset_id__risk_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                asset_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskSnapshotOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_risk_overview_api_risk_overview_get: {
+        parameters: {
+            query?: {
+                top_n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_summary_sql_api_risk_summary_sql_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -629,18 +985,20 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RiskSummaryResponse"];
                 };
             };
         };
     };
-    get_risk_overview_api_risk_overview_get: {
+    get_risk_timeseries_api_risk_timeseries__asset_id__get: {
         parameters: {
             query?: {
-                limit?: number;
+                days?: number;
             };
             header?: never;
-            path?: never;
+            path: {
+                asset_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -651,7 +1009,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RiskOverviewResponse"][];
+                    "application/json": components["schemas"]["RiskSeriesPointOut"][];
                 };
             };
             /** @description Validation Error */
@@ -698,6 +1056,68 @@ export interface operations {
             };
         };
     };
+    risk_summary_api_risk_summary_get: {
+        parameters: {
+            query?: {
+                level?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskSummaryRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    top_risks_api_risk_top_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_stress_scenario_api_scenarios_run_post: {
         parameters: {
             query: {
@@ -716,6 +1136,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_market_bars_api_market_bars_get: {
+        parameters: {
+            query: {
+                /** @description Ticker symbol, e.g., TSLA */
+                symbol: string;
+                /** @description yfinance interval, e.g., 1d, 1h, 5m */
+                interval?: string;
+                /** @description Number of bars to return */
+                limit?: number;
+                /** @description Persist bars to the database */
+                store?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketBarsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_market_snapshot_api_market_snapshot_get: {
+        parameters: {
+            query: {
+                /** @description Ticker symbol, e.g., TSLA */
+                symbol: string;
+                /** @description yfinance interval, e.g., 1d, 1h, 5m */
+                interval?: string;
+                /** @description Bars used for indicators */
+                limit?: number;
+                /** @description Persist bars and snapshot */
+                persist?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSnapshotResponse"];
                 };
             };
             /** @description Validation Error */

@@ -220,13 +220,15 @@ class IndicatorSnapshot(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    timeframe: Mapped[str] = mapped_column(String(16), default="1d", nullable=False)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
     sma_20: Mapped[float | None] = mapped_column(Float)
     rsi_14: Mapped[float | None] = mapped_column(Float)
     risk_v0: Mapped[float | None] = mapped_column(Float)
     explain_json: Mapped[dict | None] = mapped_column(JSON)
+    snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        Index("ix_indicator_snapshot_symbol_ts", "symbol", "ts", unique=True),
+        Index("ix_indicator_snapshot_symbol_tf_ts", "symbol", "timeframe", "ts", unique=True),
     )

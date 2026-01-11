@@ -4,6 +4,7 @@ import Health from './components/Health'
 import ScenarioForm from './components/ScenarioForm'
 import AssetsPage from './pages/AssetsPage'
 import DashboardPage from './pages/DashboardPage'
+import MarketPage from './pages/MarketPage'
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <nav>
           <Link to="/" style={{color:'#fff', marginRight:12}}>Dashboard</Link>
           <Link to="/assets" style={{color:'#fff', marginRight:12}}>Assets</Link>
+          <Link to="/market" style={{color:'#fff', marginRight:12}}>Market</Link>
           <Link to="/scenarios" style={{color:'#fff'}}>Scenarios</Link>
         </nav>
       </header>
@@ -20,6 +22,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardPage/>} />
           <Route path="/assets" element={<AssetsPage/>} />
+          <Route path="/market" element={<MarketPage/>} />
           <Route path="/scenarios" element={<div><h2>Scenarios</h2><ScenarioForm/></div>} />
         </Routes>
       </main>

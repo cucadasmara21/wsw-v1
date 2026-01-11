@@ -264,6 +264,34 @@ def init_database() -> bool:
         except Exception as e:
             logger.warning(f"⚠️ Could not ensure risk_snapshots table: {e}")
 
+        # Ensure indicator_snapshots table has required columns/indexes (SQLite-safe)
+        try:
+            if settings.USE_SQLITE:
+                with engine.connect() as conn:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS indicator_snapshots (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            symbol TEXT NOT NULL,
+                            timeframe TEXT DEFAULT '1d',
+                            ts TEXT NOT NULL,
+                            sma_20 REAL,
+                            rsi_14 REAL,
+                            risk_v0 REAL,
+                            explain_json TEXT,
+                            snapshot_json TEXT,
+                            created_at TEXT
+                        );
+                    """))
+                    cols = conn.execute(text("PRAGMA table_info(indicator_snapshots)")).mappings().all()
+                    existing = {c['name'] for c in cols}
+                    if 'timeframe' not in existing:
+                        conn.execute(text("ALTER TABLE indicator_snapshots ADD COLUMN timeframe TEXT DEFAULT '1d'"))
+                    if 'snapshot_json' not in existing:
+                        conn.execute(text("ALTER TABLE indicator_snapshots ADD COLUMN snapshot_json TEXT"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_indicator_snapshot_symbol_tf_ts ON indicator_snapshots(symbol,timeframe,ts);"))
+        except Exception as e:
+            logger.warning(f"⚠️ Could not ensure indicator_snapshots table: {e}")
+
         return True
     except Exception as e:
         logger.error(f"❌ DB init error: {e}")

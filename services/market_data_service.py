@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -12,6 +12,15 @@ from models import PriceBar
 from services.cache_service import cache_service
 
 logger = logging.getLogger(__name__)
+
+# Optional yfinance import
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    yf = None  # type: ignore
+    YFINANCE_AVAILABLE = False
+
 
 MIN_BARS = 20
 CACHE_TTL_SECONDS = 60
@@ -57,10 +66,8 @@ def _normalize_bars(raw_bars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def fetch_history(symbol: str, interval: str = "1d", period: str | None = None) -> List[Dict[str, Any]]:
     """Fetch historical OHLCV data using yfinance if available."""
-    try:
-        import yfinance as yf
-    except ImportError as exc:  # pragma: no cover - network path mocked in tests
-        raise RuntimeError("yfinance not installed. Install requirements-analytics.txt") from exc
+    if not YFINANCE_AVAILABLE:
+        raise RuntimeError("yfinance not installed. Install requirements-analytics.txt")
 
     resolved_period = period or PERIOD_BY_INTERVAL.get(interval, "1y")
     df = yf.download(symbol, period=resolved_period, interval=interval, progress=False)
@@ -116,6 +123,7 @@ def get_bars(symbol: str, interval: str = "1d", limit: int = 200, use_cache: boo
     trimmed = normalized[-limit:]
     cache_service.set_json(cache_key, trimmed, ttl=CACHE_TTL_SECONDS)
     return trimmed
+
 
 
 def persist_price_bars(db: Session, symbol: str, bars: List[Dict[str, Any]]) -> Tuple[int, int]:

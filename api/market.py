@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 """Market data endpoints: bars and indicator snapshots."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,17 @@ from schemas import MarketBarsResponse, MarketSnapshotResponse
 from services import market_data_service, indicators_service
 
 router = APIRouter(tags=["market"])
+logger = logging.getLogger(__name__)
+
+
+def _dependency_error_response(code: str, message: str) -> dict:
+    """Return standardized dependency error response."""
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+        }
+    }
 
 
 @router.get("/bars", response_model=MarketBarsResponse, summary="Get OHLCV bars")
@@ -20,13 +32,26 @@ def get_market_bars(
     db: Session = Depends(get_db),
 ):
     """Return normalized OHLCV bars using yfinance (cached) without pandas dependency."""
-    bars = market_data_service.get_bars(symbol, interval=interval, limit=limit, use_cache=True)
+    try:
+        bars = market_data_service.get_bars(symbol, interval=interval, limit=limit, use_cache=True)
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            # yfinance not available - return clear error
+            raise HTTPException(
+                status_code=503,
+                detail=_dependency_error_response(
+                    "dependency_missing",
+                    "Optional dependency yfinance not installed. Install requirements-optional.txt"
+                )
+            )
+        raise
+
     if store:
         try:
             market_data_service.persist_price_bars(db, symbol, bars)
         except Exception:
             # best-effort persistence; keep response even if persistence fails
-            pass
+            logger.debug(f"Failed to persist bars for {symbol}", exc_info=True)
 
     return MarketBarsResponse(
         symbol=symbol,
@@ -45,7 +70,20 @@ def get_market_snapshot(
     persist: bool = Query(True, description="Persist bars and snapshot"),
     db: Session = Depends(get_db),
 ):
-    bars = market_data_service.get_bars(symbol, interval=interval, limit=limit, use_cache=True)
+    """Compute and return market snapshot with indicators and risk score."""
+    try:
+        bars = market_data_service.get_bars(symbol, interval=interval, limit=limit, use_cache=True)
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            raise HTTPException(
+                status_code=503,
+                detail=_dependency_error_response(
+                    "dependency_missing",
+                    "Optional dependency yfinance not installed. Install requirements-optional.txt"
+                )
+            )
+        raise
+
     snapshot = indicators_service.compute_snapshot(symbol, bars, timeframe=interval)
 
     if persist:
@@ -53,13 +91,13 @@ def get_market_snapshot(
             market_data_service.persist_price_bars(db, symbol, bars)
         except Exception:
             # persistence is best-effort
-            pass
+            logger.debug(f"Failed to persist bars for {symbol}", exc_info=True)
         try:
             indicators_service.persist_snapshot(db, snapshot)
         except HTTPException:
             raise
         except Exception:
             # do not fail the endpoint if persistence fails
-            pass
+            logger.debug(f"Failed to persist snapshot for {symbol}", exc_info=True)
 
     return snapshot

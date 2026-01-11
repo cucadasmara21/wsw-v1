@@ -2,9 +2,18 @@
  * Typed API client using OpenAPI-generated types
  * 
  * This provides a minimal typed wrapper around the API.
- * For full type safety, import `paths` from './generated' and use with a fetch wrapper.
+ * For full type safety, import types from './types' and paths from './generated'.
  */
-import type { paths, components } from './generated'
+import type { paths } from './generated'
+import type {
+  Asset,
+  MarketBars,
+  MarketSnapshot,
+  RiskOverview,
+  RiskSummary,
+  User,
+  Token,
+} from './types'
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -69,9 +78,13 @@ export async function fetchRaw(path: string, init?: RequestInit) {
 }
 
 // Re-export types for convenience
-export type { paths, components }
-
-// Example: Extract specific schema types
-export type Asset = components['schemas']['AssetSchema']
-export type HealthResponse = components['schemas']['HealthResponse']
-export type VersionResponse = components['schemas']['VersionResponse']
+export type { paths }
+export type {
+  Asset,
+  MarketBars,
+  MarketSnapshot,
+  RiskOverview,
+  RiskSummary,
+  User,
+  Token,
+}

@@ -122,7 +122,7 @@ from datetime import datetime
 from typing import Optional, List
 
 from sqlalchemy import (
-    String, Integer, Float, DateTime, ForeignKey, Index
+    String, Integer, Float, DateTime, ForeignKey, Index, BigInteger
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -189,4 +189,44 @@ class RiskSnapshot(Base):
 
     __table_args__ = (
         Index("ix_risk_asset_ts", "asset_id", "ts"),
+    )
+
+
+class PriceBar(Base):
+    """Precio OHLCV básico por símbolo y timestamp."""
+
+    __tablename__ = "price_bars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    open: Mapped[float | None] = mapped_column(Float)
+    high: Mapped[float | None] = mapped_column(Float)
+    low: Mapped[float | None] = mapped_column(Float)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    volume: Mapped[int | None] = mapped_column(BigInteger)
+    source: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_price_bars_symbol_ts", "symbol", "ts", unique=True),
+    )
+
+
+class IndicatorSnapshot(Base):
+    """Snapshot de indicadores calculados (SMA, RSI, riesgo)."""
+
+    __tablename__ = "indicator_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    sma_20: Mapped[float | None] = mapped_column(Float)
+    rsi_14: Mapped[float | None] = mapped_column(Float)
+    risk_v0: Mapped[float | None] = mapped_column(Float)
+    explain_json: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_indicator_snapshot_symbol_ts", "symbol", "ts", unique=True),
     )

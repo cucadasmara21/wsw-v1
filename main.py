@@ -162,10 +162,10 @@ if settings.trusted_hosts_list:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts_list)
 
 # Routers
-app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
-app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
-app.include_router(risk.router, prefix="/api/risk", tags=["risk"])
-app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
+app.include_router(auth.router, prefix="/api/auth")
+app.include_router(assets.router, prefix="/api/assets")
+app.include_router(risk.router, prefix="/api/risk")
+app.include_router(scenarios.router, prefix="/api/scenarios")
 
 
 @app.get("/")

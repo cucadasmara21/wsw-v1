@@ -15,7 +15,7 @@ from models import User
 from schemas import User as UserSchema, Token, UserCreate
 from config import settings
 
-router = APIRouter()
+router = APIRouter(tags=["auth"])
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
@@ -57,7 +57,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
 @router.post("/register", response_model=UserSchema)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Registrar nuevo usuario"""
+    """
+    Register a new user account.
+    
+    Args:
+        user_data (UserCreate): User registration data including username, email, password, full_name, and role.
+        db (Session): Database session (dependency injected).
+    
+    Returns:
+        UserSchema: The newly created user object.
+    
+    Raises:
+        HTTPException: 400 if username or email already exists.
+    """
     existing = db.query(User).filter(
         (User.username == user_data.username) | (User.email == user_data.email)
     ).first()
@@ -82,7 +94,19 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/token", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """Obtener token de acceso"""
+    """
+    Authenticate user and return JWT access token.
+    
+    Args:
+        form_data (OAuth2PasswordRequestForm): Username and password from form submission.
+        db (Session): Database session (dependency injected).
+    
+    Returns:
+        Token: Object containing access_token and token_type ("bearer").
+    
+    Raises:
+        HTTPException: 401 if username not found or password verification fails.
+    """
     user = db.query(User).filter(User.username == form_data.username).first()
 
     if not user or not verify_password(form_data.password, user.hashed_password):

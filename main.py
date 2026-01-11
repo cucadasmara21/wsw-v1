@@ -33,16 +33,10 @@ BUILD_INFO = {
     "build_time": datetime.utcnow().isoformat()
 }
 
-# Logger
+# Logger - Structured logging with request tracking
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-logging.basicConfig(
-    level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -110,16 +104,53 @@ async def sqlalchemy_invalid_request_handler(request, exc):
 async def sqlalchemy_nofk_handler(request, exc):
     return JSONResponse(status_code=500, content={"detail": "Schema configuration issue: missing foreign key links for relationships.", "error": str(exc)})
 
-# Simple request-id middleware
+
+# Global exception handler for consistency
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTPException with request_id"""
+    request_id = request.headers.get("X-Request-Id", "unknown")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": exc.status_code,
+                "message": exc.detail,
+                "request_id": request_id
+            }
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions gracefully"""
+    request_id = request.headers.get("X-Request-Id", "unknown")
+    logger.error(f"[{request_id}] Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": 500,
+                "message": "Internal Server Error",
+                "request_id": request_id
+            }
+        }
+    )
+
+
+# Request ID middleware with logging context
 @app.middleware("http")
 async def add_request_id_header(request: Request, call_next):
     request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    logger.info(f"[{request_id}] {request.method} {request.url.path}")
     try:
         response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
+        logger.info(f"[{request_id}] Response: {response.status_code}")
     except Exception as e:
-        logger.exception(f"[{request_id}] Unhandled error while handling request: {e}")
+        logger.exception(f"[{request_id}] Unhandled error: {e}")
         raise
-    response.headers["X-Request-Id"] = request_id
     return response
 
 
@@ -197,12 +228,16 @@ async def health_check():
     }
 
 
-@app.get('/version')
+@app.get('/version', tags=["System"])
 async def version():
-    """Return build info including git sha and build time"""
+    """Return build info including git sha, build time, and environment"""
     return {
+        "app": "WallStreetWar",
+        "version": "1.0.0",
         "git_sha": BUILD_INFO.get("git_sha"),
-        "build_time": BUILD_INFO.get("build_time")
+        "build_time": BUILD_INFO.get("build_time"),
+        "environment": settings.ENVIRONMENT,
+        "debug": settings.DEBUG
     }
 
 @app.get("/api/status")

@@ -13,10 +13,10 @@ from database import get_db
 from models import Asset, Price
 from schemas import Asset as AssetSchema, AssetCreate, AssetUpdate
 
-router = APIRouter()
+router = APIRouter(tags=["assets"])
 
 
-@router.get("/", response_model=List[AssetSchema])
+@router.get("/", response_model=List[AssetSchema], summary="List all assets")
 async def get_assets(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -24,7 +24,14 @@ async def get_assets(
     category: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Obtener lista de activos"""
+    """
+    Retrieve a paginated list of assets.
+    
+    - **skip**: Number of assets to skip (default: 0)
+    - **limit**: Number of assets to return (default: 100, max: 1000)
+    - **active_only**: Filter only active assets (default: True)
+    - **category**: Optional category filter
+    """
     try:
         query = db.query(Asset)
         if active_only:
@@ -38,9 +45,13 @@ async def get_assets(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{asset_id}", response_model=AssetSchema)
+@router.get("/{asset_id}", response_model=AssetSchema, summary="Get asset by ID")
 async def get_asset(asset_id: int, db: Session = Depends(get_db)):
-    """Obtener un activo por ID"""
+    """
+    Retrieve a specific asset by its ID.
+    
+    - **asset_id**: The unique identifier of the asset
+    """
     asset = db.query(Asset).filter(Asset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")

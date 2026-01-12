@@ -65,6 +65,36 @@ export type AlertOut = {
   payload: Record<string, any>
 }
 
+// Selection types
+export interface SelectionItem {
+  asset_id: number
+  symbol: string
+  name: string
+  score: number
+  rank: number
+  explain: Record<string, number>
+  data_meta?: {
+    source?: string
+    cached?: boolean
+    stale?: boolean
+    confidence?: number
+  }
+}
+
+export interface CategorySelection {
+  selected: SelectionItem[]
+  candidates?: SelectionItem[]
+  meta: {
+    category_id: number
+    category_name?: string
+    top_n: number
+    lookback_days?: number
+    weights?: Record<string, number>
+    total_candidates?: number
+    source?: string
+  }
+}
+
 // Validation schemas
 export type ValidationError = components['schemas']['ValidationError']
 export type HTTPValidationError = components['schemas']['HTTPValidationError']

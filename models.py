@@ -5,7 +5,7 @@ Modelos SQLAlchemy unificados
 Compatible con SQLAlchemy 2.x
 SCHEMA UNIFICADO: prices(time, asset_id, close, ...)
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, BigInteger, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, BigInteger, JSON, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -285,4 +285,50 @@ class Alert(Base):
     __table_args__ = (
         Index("ix_alerts_asset_triggered", "asset_id", "triggered_at"),
         Index("ix_alerts_severity", "severity"),
+    )
+
+
+class CategoryAsset(Base):
+    """Association table for dynamic category selection with scoring"""
+    __tablename__ = "category_assets"
+
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), primary_key=True, index=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), primary_key=True, index=True)
+    
+    is_candidate: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_selected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    
+    last_score: Mapped[float | None] = mapped_column(Float)
+    last_rank: Mapped[int | None] = mapped_column(Integer)
+    score_ema: Mapped[float | None] = mapped_column(Float)  # Exponential moving average for stability
+    
+    last_selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_category_assets_category_selected", "category_id", "is_selected"),
+        Index("ix_category_assets_score", "category_id", "last_score"),
+    )
+
+
+class SelectionRun(Base):
+    """Record of dynamic selection algorithm execution"""
+    __tablename__ = "selection_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), index=True, nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    top_n: Mapped[int] = mapped_column(Integer, nullable=False)
+    lookback_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    
+    weights_json: Mapped[dict] = mapped_column(JSON, default=dict)  # Algorithm weights/params
+    notes: Mapped[str | None] = mapped_column(String(500))
+    
+    results_json: Mapped[dict] = mapped_column(JSON, default=dict)  # Selected assets with scores/explain
+
+    __table_args__ = (
+        Index("ix_selection_runs_category_created", "category_id", "created_at"),
     )

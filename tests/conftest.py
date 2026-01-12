@@ -25,7 +25,7 @@ def client() -> Generator[TestClient, None, None]:
                 email="test@local",
                 username="tester",
                 hashed_password="",
-                role="viewer",
+                role="analyst",  # Changed to analyst for selection tests
                 is_active=True,
             )
         return _dep
@@ -39,7 +39,7 @@ def client() -> Generator[TestClient, None, None]:
             email="test@local",
             username="tester",
             hashed_password="",
-            role="viewer",
+            role="analyst",  # Changed to analyst for selection tests
             is_active=True,
         )
     app.dependency_overrides[get_current_user] = fake_current_user
@@ -52,3 +52,21 @@ def client() -> Generator[TestClient, None, None]:
             # If seeding fails, continue; some tests tolerate empty state
             pass
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def cleanup_market_state():
+    """Clean up market_data_service state after each test to ensure test isolation."""
+    yield
+    try:
+        from services import market_data_service
+        from config import settings
+        market_data_service.cache_service.memory_cache.clear()
+        market_data_service._rate_events = []
+        market_data_service.set_provider_override(None)
+        # Restore default settings
+        settings.MARKET_PROVIDER_ENABLED = True
+        settings.MARKET_RATE_LIMIT_PER_MINUTE = 60
+        settings.MARKET_PROVIDER = "mock"
+    except Exception:
+        pass

@@ -149,3 +149,44 @@ export async function resolveAlert(alertId: number): Promise<any> {
 export async function recomputeAlerts(): Promise<{ status: string }> {
   return typedPost<{}, { status: string }>(`/alerts/recompute`, {})
 }
+
+/**
+ * Preview category selection (non-persistent)
+ */
+export async function previewCategorySelection(
+  categoryId: number,
+  params?: { top_n?: number; lookback_days?: number }
+): Promise<any> {
+  const queryParams = new URLSearchParams()
+  if (params?.top_n) queryParams.set('top_n', params.top_n.toString())
+  if (params?.lookback_days) queryParams.set('lookback_days', params.lookback_days.toString())
+  const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+  return typedGet<any>(`/selection/categories/${categoryId}/preview${query}`)
+}
+
+/**
+ * Recompute and persist category selection
+ */
+export async function recomputeCategorySelection(
+  categoryId: number,
+  params?: { top_n?: number; lookback_days?: number }
+): Promise<any> {
+  const queryParams = new URLSearchParams()
+  if (params?.top_n) queryParams.set('top_n', params.top_n.toString())
+  if (params?.lookback_days) queryParams.set('lookback_days', params.lookback_days.toString())
+  const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+  return typedPost<{}, any>(`/selection/categories/${categoryId}/recompute${query}`, {})
+}
+
+/**
+ * Get current persisted selection for category
+ */
+export async function getCurrentCategorySelection(
+  categoryId: number,
+  params?: { top_n?: number }
+): Promise<any> {
+  const queryParams = new URLSearchParams()
+  if (params?.top_n) queryParams.set('top_n', params.top_n.toString())
+  const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+  return typedGet<any>(`/selection/categories/${categoryId}/current${query}`)
+}

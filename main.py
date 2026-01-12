@@ -18,7 +18,7 @@ from sqlalchemy import text
 from config import settings
 from database import engine, get_db, init_database, test_connections, neo4j_driver
 from models import Base
-from api import assets, risk, scenarios, auth, market, universe, metrics, alerts
+from api import assets, risk, scenarios, auth, market, universe, metrics, alerts, selection
 from services.cache_service import cache_service
 from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
@@ -213,6 +213,7 @@ app.include_router(scenarios.router, prefix="/api/scenarios")
 app.include_router(market.router, prefix="/api/market")
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(selection.router, prefix="/api/selection", tags=["selection"])
 
 
 @app.get("/")
@@ -261,6 +262,9 @@ async def health_check():
         neo4j_status = "unavailable"
 
     overall_status = "healthy" if db_status == "healthy" else "degraded"
+    
+    # Import market metrics
+    from services import market_data_service
 
     return {
         "status":  overall_status,
@@ -271,7 +275,10 @@ async def health_check():
             "neo4j": neo4j_status
         },
         "environment": settings.ENVIRONMENT,
-        "debug": settings.DEBUG
+        "debug": settings.DEBUG,
+        "market": {
+            "metrics": market_data_service.metrics
+        }
     }
 
 

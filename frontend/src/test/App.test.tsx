@@ -1,9 +1,16 @@
 /**
  * Smoke test: App component renders without crashing
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import App from '../App'
+
+// Mock API calls
+vi.mock('../lib/api', () => ({
+  apiClient: {
+    get: vi.fn().mockResolvedValue([])
+  }
+}))
 
 describe('App', () => {
   it('renders without crashing', () => {
@@ -13,14 +20,9 @@ describe('App', () => {
 
   it('renders navigation links', () => {
     render(<App />)
-    // Check that navigation exists (links may appear multiple times in page)
-    const dashboardLinks = screen.getAllByText(/Dashboard/i)
-    expect(dashboardLinks.length).toBeGreaterThan(0)
-    
-    const assetsLinks = screen.getAllByText(/Assets/i)
-    expect(assetsLinks.length).toBeGreaterThan(0)
-    
-    const scenariosLinks = screen.getAllByText(/Scenarios/i)
-    expect(scenariosLinks.length).toBeGreaterThan(0)
+    // Check sidebar navigation
+    expect(screen.getByText(/Overview/i)).toBeInTheDocument()
+    expect(screen.getByText(/Universe/i)).toBeInTheDocument()
+    expect(screen.getByText(/Health/i)).toBeInTheDocument()
   })
 })

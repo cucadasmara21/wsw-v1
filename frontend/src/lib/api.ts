@@ -16,7 +16,13 @@ export async function fetchApiJson<T = any>(path: string, init?: RequestInit) {
   const res = await fetch(url, init)
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`)
+    let errorData
+    try {
+      errorData = JSON.parse(text)
+    } catch {
+      errorData = { message: text.slice(0, 200) }
+    }
+    throw errorData
   }
   return res.json() as Promise<T>
 }
@@ -39,4 +45,21 @@ export async function fetchRootJson<T = any>(path: string, init?: RequestInit) {
     throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`)
   }
   return res.json() as Promise<T>
+}
+
+/**
+ * Simple API client for common operations
+ */
+export const apiClient = {
+  async get<T>(path: string): Promise<T> {
+    return fetchApiJson<T>(path)
+  },
+  
+  async post<T>(path: string, body: any): Promise<T> {
+    return fetchApiJson<T>(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+  }
 }

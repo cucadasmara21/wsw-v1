@@ -31,7 +31,9 @@ describe('API Client', () => {
       text: async () => 'Resource not found'
     })
 
-    await expect(fetchApiJson('/nonexistent')).rejects.toThrow(/404/)
+    await expect(fetchApiJson('/nonexistent')).rejects.toMatchObject({
+      message: 'Resource not found'
+    })
   })
 
   it('constructs correct URL with API base', async () => {

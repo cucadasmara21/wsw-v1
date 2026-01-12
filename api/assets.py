@@ -134,3 +134,73 @@ async def create_asset(
     db.refresh(db_asset)
     return db_asset
 
+
+@router.get("/category/{category_id}/paginated", summary="Get paginated assets for category")
+async def get_category_assets_paginated(
+    category_id: int,
+    limit: int = Query(50, ge=1, le=500, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    q: Optional[str] = Query(None, description="Search by symbol or name"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role([ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN]))
+):
+    """
+    Get paginated assets for a specific category with optional search
+    
+    Query parameters:
+    - **limit**: Max items per page (default 50, max 500)
+    - **offset**: Pagination offset (default 0)
+    - **q**: Optional search term (filters symbol or name with ILIKE)
+    
+    Returns:
+        {
+            "items": [{"id", "symbol", "name", "sector", "category_id", ...}],
+            "total": int,  # Total count matching filters
+            "limit": int,
+            "offset": int
+        }
+    """
+    # Verify category exists
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
+    
+    # Build base query for this category
+    query = db.query(Asset).filter(Asset.category_id == category_id, Asset.is_active == True)
+    
+    # Apply search filter if provided
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            or_(
+                Asset.symbol.ilike(search_term),
+                Asset.name.ilike(search_term)
+            )
+        )
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    items = query.order_by(Asset.symbol).offset(offset).limit(limit).all()
+    
+    return {
+        "items": [
+            {
+                "id": asset.id,
+                "symbol": asset.symbol,
+                "name": asset.name,
+                "sector": asset.sector,
+                "category_id": asset.category_id,
+                "exchange": asset.exchange,
+                "country": asset.country,
+                "is_active": asset.is_active,
+                "created_at": asset.created_at,
+                "updated_at": asset.updated_at,
+            }
+            for asset in items
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }

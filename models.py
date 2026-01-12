@@ -20,8 +20,7 @@ class Asset(Base):
     symbol = Column(String(20), unique=True, index=True, nullable=False)
     name = Column(String(200))
     sector = Column(String(100))
-    category = Column(String(100))
-    group_name = Column(String(100))
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
     exchange = Column(String(50))
     country = Column(String(50))
     currency = Column(String(3), default="USD")
@@ -30,6 +29,8 @@ class Asset(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # Relationships
+    category_rel = relationship("Category", back_populates="assets")
     prices = relationship("Price", back_populates="asset", cascade="all, delete-orphan")
     risk_metrics = relationship("RiskMetric", back_populates="asset", cascade="all, delete-orphan")
     # Compatibility: keep risk_snapshots relationship expected by other modules
@@ -42,7 +43,7 @@ class Asset(Base):
             "symbol": self.symbol,
             "name": self.name,
             "sector": self.sector,
-            "category": self.category,
+            "category_id": self.category_id,
             "exchange": self.exchange,
             "country": self.country,
             "currency": self.currency,

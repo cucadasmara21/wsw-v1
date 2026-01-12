@@ -4,19 +4,22 @@
  */
 import type { components } from './generated'
 
-// Stable aliases for commonly used schemas
-export type Asset = components['schemas']['AssetOut']
-export type AssetDetail = components['schemas']['AssetDetailOut']
-export type PagedAssets = components['schemas']['PagedAssetsOut']
+// Asset schemas
+export type Asset = components['schemas']['Asset']
+export type AssetDetail = components['schemas']['AssetDetail']
+export type AssetCreate = components['schemas']['AssetCreate']
 
+// Ontology schemas  
+export type GroupNode = components['schemas']['GroupNode']
+export type SubgroupNode = components['schemas']['SubgroupNode']
+export type CategoryNode = components['schemas']['CategoryNode']
+export type UniverseTree = components['schemas']['UniverseTreeResponse']
+
+// Auth schemas
 export type User = components['schemas']['User']
 export type Token = components['schemas']['Token']
 
-export type RiskSnapshot = components['schemas']['RiskSnapshotOut']
-export type RiskVector = components['schemas']['RiskVector']
-export type RiskOverview = components['schemas']['RiskOverviewResponse']
-export type RiskSummary = components['schemas']['RiskSummaryResponse']
-
+// Market schemas
 export type MarketBar = components['schemas']['MarketBar']
 export type MarketBars = components['schemas']['MarketBarsResponse']
 export type MarketIndicators = components['schemas']['MarketIndicators']
@@ -24,5 +27,6 @@ export type MarketRisk = components['schemas']['MarketRisk']
 export type MarketRiskComponents = components['schemas']['MarketRiskComponents']
 export type MarketSnapshot = components['schemas']['MarketSnapshotResponse']
 
+// Validation schemas
 export type ValidationError = components['schemas']['ValidationError']
 export type HTTPValidationError = components['schemas']['HTTPValidationError']

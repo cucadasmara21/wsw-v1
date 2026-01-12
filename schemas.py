@@ -13,7 +13,7 @@ class AssetBase(BaseModel):
     symbol: str
     name: Optional[str] = None
     sector: Optional[str] = None
-    category: Optional[str] = None
+    category_id: Optional[int] = None
     exchange: Optional[str] = None
     country: Optional[str] = None
 
@@ -269,3 +269,72 @@ class MarketSnapshotResponse(BaseModel):
     timestamp: datetime
     indicators: MarketIndicators
     risk: MarketRisk
+
+
+# Ontology schemas
+class GroupBase(BaseModel):
+    name: str
+
+
+class GroupOut(GroupBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class SubgroupBase(BaseModel):
+    name: str
+    group_id: int
+
+
+class SubgroupOut(SubgroupBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class CategoryBase(BaseModel):
+    name: str
+    subgroup_id: int
+
+
+class CategoryOut(CategoryBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+# Universe tree response
+class CategoryNode(BaseModel):
+    id: int
+    name: str
+
+
+class SubgroupNode(BaseModel):
+    id: int
+    name: str
+    categories: List[CategoryNode] = []
+
+
+class GroupNode(BaseModel):
+    id: int
+    name: str
+    subgroups: List[SubgroupNode] = []
+
+
+class UniverseTreeResponse(BaseModel):
+    groups: List[GroupNode]
+
+
+# Enhanced Asset response with category info
+class AssetDetail(Asset):
+    category_name: Optional[str] = None
+    subgroup_name: Optional[str] = None
+    group_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+

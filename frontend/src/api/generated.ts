@@ -84,17 +84,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/assets": {
+    "/api/assets/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Assets */
-        get: operations["list_assets_api_assets_get"];
+        /**
+         * List assets with filters
+         * @description List assets with ontology filters and search.
+         *
+         *     Filters can be combined:
+         *     - **group_id**: Filter assets in specific group
+         *     - **subgroup_id**: Filter assets in specific subgroup
+         *     - **category_id**: Filter assets in specific category
+         *     - **q**: Search by symbol or name (case-insensitive)
+         */
+        get: operations["get_assets_api_assets__get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Asset
+         * @description Create new asset
+         */
+        post: operations["create_asset_api_assets__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -108,8 +121,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Asset Detail */
-        get: operations["asset_detail_api_assets__asset_id__get"];
+        /**
+         * Get asset detail
+         * @description Get detailed asset information including category hierarchy.
+         */
+        get: operations["get_asset_api_assets__asset_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -118,15 +134,21 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/assets/{asset_id}/risk_history": {
+    "/api/universe/tree": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Asset Risk History */
-        get: operations["asset_risk_history_api_assets__asset_id__risk_history_get"];
+        /**
+         * Get universe tree
+         * @description Return complete ontology tree: Groups → Subgroups → Categories
+         *
+         *     This endpoint is optimized with eager loading to minimize queries.
+         *     Use it to populate navigation UI.
+         */
+        get: operations["get_universe_tree_api_universe_tree_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -313,7 +335,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Compute indicators and risk snapshot */
+        /**
+         * Compute indicators and risk snapshot
+         * @description Compute and return market snapshot with indicators and risk score.
+         */
         get: operations["get_market_snapshot_api_market_snapshot_get"];
         put?: never;
         post?: never;
@@ -415,32 +440,78 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AssetDetailOut */
-        AssetDetailOut: {
-            /** Id */
-            id: number;
+        /** Asset */
+        Asset: {
             /** Symbol */
             symbol: string;
             /** Name */
-            name: string;
-            /** Asset Type */
-            asset_type: string;
+            name?: string | null;
+            /** Sector */
+            sector?: string | null;
             /** Category Id */
-            category_id: number;
-            latest?: components["schemas"]["RiskSnapshotOut"] | null;
+            category_id?: number | null;
+            /** Exchange */
+            exchange?: string | null;
+            /** Country */
+            country?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
-        /** AssetOut */
-        AssetOut: {
-            /** Id */
-            id: number;
+        /** AssetCreate */
+        AssetCreate: {
             /** Symbol */
             symbol: string;
             /** Name */
-            name: string;
-            /** Asset Type */
-            asset_type: string;
+            name?: string | null;
+            /** Sector */
+            sector?: string | null;
             /** Category Id */
-            category_id: number;
+            category_id?: number | null;
+            /** Exchange */
+            exchange?: string | null;
+            /** Country */
+            country?: string | null;
+        };
+        /** AssetDetail */
+        AssetDetail: {
+            /** Symbol */
+            symbol: string;
+            /** Name */
+            name?: string | null;
+            /** Sector */
+            sector?: string | null;
+            /** Category Id */
+            category_id?: number | null;
+            /** Exchange */
+            exchange?: string | null;
+            /** Country */
+            country?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Category Name */
+            category_name?: string | null;
+            /** Subgroup Name */
+            subgroup_name?: string | null;
+            /** Group Name */
+            group_name?: string | null;
         };
         /** Body_login_api_auth_token_post */
         Body_login_api_auth_token_post: {
@@ -460,6 +531,13 @@ export interface components {
             /** Client Secret */
             client_secret?: string | null;
         };
+        /** CategoryNode */
+        CategoryNode: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
         /** GroupAgg */
         GroupAgg: {
             /** Group Name */
@@ -469,6 +547,18 @@ export interface components {
             /** Cri Avg */
             cri_avg: number;
             vector_avg: components["schemas"]["RiskVector"];
+        };
+        /** GroupNode */
+        GroupNode: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Subgroups
+             * @default []
+             */
+            subgroups: components["schemas"]["SubgroupNode"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -558,13 +648,6 @@ export interface components {
             indicators: components["schemas"]["MarketIndicators"];
             risk: components["schemas"]["MarketRisk"];
         };
-        /** PagedAssetsOut */
-        PagedAssetsOut: {
-            /** Total */
-            total: number;
-            /** Items */
-            items: components["schemas"]["AssetOut"][];
-        };
         /** RiskOverviewResponse */
         RiskOverviewResponse: {
             /** As Of */
@@ -595,28 +678,6 @@ export interface components {
             counterparty_risk: number;
             /** Regime Risk */
             regime_risk: number;
-        };
-        /** RiskSnapshotOut */
-        RiskSnapshotOut: {
-            /**
-             * Ts
-             * Format: date-time
-             */
-            ts: string;
-            /** Price Risk */
-            price_risk: number;
-            /** Liq Risk */
-            liq_risk: number;
-            /** Fund Risk */
-            fund_risk: number;
-            /** Cp Risk */
-            cp_risk: number;
-            /** Regime Risk */
-            regime_risk: number;
-            /** Cri */
-            cri: number;
-            /** Model Version */
-            model_version: string;
         };
         /** RiskSummaryResponse */
         RiskSummaryResponse: {
@@ -670,6 +731,18 @@ export interface components {
             /** Regime Risk */
             regime_risk: number;
         };
+        /** SubgroupNode */
+        SubgroupNode: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Categories
+             * @default []
+             */
+            categories: components["schemas"]["CategoryNode"][];
+        };
         /** Token */
         Token: {
             /** Access Token */
@@ -694,6 +767,11 @@ export interface components {
             /** Cri */
             cri: number;
             risk_vector: components["schemas"]["RiskVector"];
+        };
+        /** UniverseTreeResponse */
+        UniverseTreeResponse: {
+            /** Groups */
+            groups: components["schemas"]["GroupNode"][];
         };
         /** User */
         User: {
@@ -840,14 +918,20 @@ export interface operations {
             };
         };
     };
-    list_assets_api_assets_get: {
+    get_assets_api_assets__get: {
         parameters: {
             query?: {
+                skip?: number;
+                limit?: number;
+                active_only?: boolean;
+                /** @description Filter by group ID */
+                group_id?: number | null;
+                /** @description Filter by subgroup ID */
+                subgroup_id?: number | null;
+                /** @description Filter by category ID */
+                category_id?: number | null;
                 /** @description Search by symbol or name */
                 q?: string | null;
-                category_id?: number | null;
-                limit?: number;
-                offset?: number;
             };
             header?: never;
             path?: never;
@@ -861,7 +945,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PagedAssetsOut"];
+                    "application/json": components["schemas"]["Asset"][];
                 };
             };
             /** @description Validation Error */
@@ -875,7 +959,40 @@ export interface operations {
             };
         };
     };
-    asset_detail_api_assets__asset_id__get: {
+    create_asset_api_assets__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_api_assets__asset_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -892,7 +1009,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetDetailOut"];
+                    "application/json": components["schemas"]["AssetDetail"];
                 };
             };
             /** @description Validation Error */
@@ -906,15 +1023,11 @@ export interface operations {
             };
         };
     };
-    asset_risk_history_api_assets__asset_id__risk_history_get: {
+    get_universe_tree_api_universe_tree_get: {
         parameters: {
-            query?: {
-                limit?: number;
-            };
+            query?: never;
             header?: never;
-            path: {
-                asset_id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -925,16 +1038,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RiskSnapshotOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["UniverseTreeResponse"];
                 };
             };
         };

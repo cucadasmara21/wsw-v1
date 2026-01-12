@@ -117,14 +117,102 @@
         ]
       }
     },
-    "/api/assets": {
+    "/api/assets/": {
       "get": {
         "tags": [
           "assets"
         ],
-        "summary": "List Assets",
-        "operationId": "list_assets_api_assets_get",
+        "summary": "List assets with filters",
+        "description": "List assets with ontology filters and search.\n\nFilters can be combined:\n- **group_id**: Filter assets in specific group\n- **subgroup_id**: Filter assets in specific subgroup\n- **category_id**: Filter assets in specific category\n- **q**: Search by symbol or name (case-insensitive)",
+        "operationId": "get_assets_api_assets__get",
         "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          },
+          {
+            "name": "group_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by group ID",
+              "title": "Group Id"
+            },
+            "description": "Filter by group ID"
+          },
+          {
+            "name": "subgroup_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by subgroup ID",
+              "title": "Subgroup Id"
+            },
+            "description": "Filter by subgroup ID"
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category ID",
+              "title": "Category Id"
+            },
+            "description": "Filter by category ID"
+          },
           {
             "name": "q",
             "in": "query",
@@ -142,45 +230,6 @@
               "title": "Q"
             },
             "description": "Search by symbol or name"
-          },
-          {
-            "name": "category_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Category Id"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0,
-              "title": "Offset"
-            }
           }
         ],
         "responses": {
@@ -189,7 +238,51 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PagedAssetsOut"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Asset"
+                  },
+                  "title": "Response Get Assets Api Assets  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Create Asset",
+        "description": "Create new asset",
+        "operationId": "create_asset_api_assets__post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
                 }
               }
             }
@@ -212,8 +305,9 @@
         "tags": [
           "assets"
         ],
-        "summary": "Asset Detail",
-        "operationId": "asset_detail_api_assets__asset_id__get",
+        "summary": "Get asset detail",
+        "description": "Get detailed asset information including category hierarchy.",
+        "operationId": "get_asset_api_assets__asset_id__get",
         "parameters": [
           {
             "name": "asset_id",
@@ -231,7 +325,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssetDetailOut"
+                  "$ref": "#/components/schemas/AssetDetail"
                 }
               }
             }
@@ -249,57 +343,21 @@
         }
       }
     },
-    "/api/assets/{asset_id}/risk_history": {
+    "/api/universe/tree": {
       "get": {
         "tags": [
-          "assets"
+          "universe"
         ],
-        "summary": "Asset Risk History",
-        "operationId": "asset_risk_history_api_assets__asset_id__risk_history_get",
-        "parameters": [
-          {
-            "name": "asset_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Asset Id"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 2000,
-              "minimum": 1,
-              "default": 200,
-              "title": "Limit"
-            }
-          }
-        ],
+        "summary": "Get universe tree",
+        "description": "Return complete ontology tree: Groups \u2192 Subgroups \u2192 Categories\n\nThis endpoint is optimized with eager loading to minimize queries.\nUse it to populate navigation UI.",
+        "operationId": "get_universe_tree_api_universe_tree_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RiskSnapshotOut"
-                  },
-                  "title": "Response Asset Risk History Api Assets  Asset Id  Risk History Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/UniverseTreeResponse"
                 }
               }
             }
@@ -710,6 +768,7 @@
           "market"
         ],
         "summary": "Compute indicators and risk snapshot",
+        "description": "Compute and return market snapshot with indicators and risk score.",
         "operationId": "get_market_snapshot_api_market_snapshot_get",
         "parameters": [
           {
@@ -874,81 +933,298 @@
   },
   "components": {
     "schemas": {
-      "AssetDetailOut": {
+      "Asset": {
         "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
           "symbol": {
             "type": "string",
             "title": "Symbol"
           },
           "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "asset_type": {
-            "type": "string",
-            "title": "Asset Type"
-          },
-          "category_id": {
-            "type": "integer",
-            "title": "Category Id"
-          },
-          "latest": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RiskSnapshotOut"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "symbol",
-          "name",
-          "asset_type",
-          "category_id"
-        ],
-        "title": "AssetDetailOut"
-      },
-      "AssetOut": {
-        "properties": {
+            ],
+            "title": "Name"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
           "id": {
             "type": "integer",
             "title": "Id"
           },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "id",
+          "is_active",
+          "created_at"
+        ],
+        "title": "Asset"
+      },
+      "AssetCreate": {
+        "properties": {
           "symbol": {
             "type": "string",
             "title": "Symbol"
           },
           "name": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name"
           },
-          "asset_type": {
-            "type": "string",
-            "title": "Asset Type"
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
           },
           "category_id": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Category Id"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
           }
         },
         "type": "object",
         "required": [
-          "id",
-          "symbol",
-          "name",
-          "asset_type",
-          "category_id"
+          "symbol"
         ],
-        "title": "AssetOut"
+        "title": "AssetCreate"
+      },
+      "AssetDetail": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "subgroup_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subgroup Name"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "id",
+          "is_active",
+          "created_at"
+        ],
+        "title": "AssetDetail"
       },
       "Body_login_api_auth_token_post": {
         "properties": {
@@ -1007,6 +1283,24 @@
         ],
         "title": "Body_login_api_auth_token_post"
       },
+      "CategoryNode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CategoryNode"
+      },
       "GroupAgg": {
         "properties": {
           "group_name": {
@@ -1033,6 +1327,32 @@
           "vector_avg"
         ],
         "title": "GroupAgg"
+      },
+      "GroupNode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subgroups": {
+            "items": {
+              "$ref": "#/components/schemas/SubgroupNode"
+            },
+            "type": "array",
+            "title": "Subgroups",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "GroupNode"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1352,27 +1672,6 @@
         ],
         "title": "MarketSnapshotResponse"
       },
-      "PagedAssetsOut": {
-        "properties": {
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AssetOut"
-            },
-            "type": "array",
-            "title": "Items"
-          }
-        },
-        "type": "object",
-        "required": [
-          "total",
-          "items"
-        ],
-        "title": "PagedAssetsOut"
-      },
       "RiskOverviewResponse": {
         "properties": {
           "as_of": {
@@ -1458,55 +1757,6 @@
           "regime_risk"
         ],
         "title": "RiskSeriesPointOut"
-      },
-      "RiskSnapshotOut": {
-        "properties": {
-          "ts": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Ts"
-          },
-          "price_risk": {
-            "type": "number",
-            "title": "Price Risk"
-          },
-          "liq_risk": {
-            "type": "number",
-            "title": "Liq Risk"
-          },
-          "fund_risk": {
-            "type": "number",
-            "title": "Fund Risk"
-          },
-          "cp_risk": {
-            "type": "number",
-            "title": "Cp Risk"
-          },
-          "regime_risk": {
-            "type": "number",
-            "title": "Regime Risk"
-          },
-          "cri": {
-            "type": "number",
-            "title": "Cri"
-          },
-          "model_version": {
-            "type": "string",
-            "title": "Model Version"
-          }
-        },
-        "type": "object",
-        "required": [
-          "ts",
-          "price_risk",
-          "liq_risk",
-          "fund_risk",
-          "cp_risk",
-          "regime_risk",
-          "cri",
-          "model_version"
-        ],
-        "title": "RiskSnapshotOut"
       },
       "RiskSummaryResponse": {
         "properties": {
@@ -1648,6 +1898,32 @@
         ],
         "title": "RiskVector"
       },
+      "SubgroupNode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryNode"
+            },
+            "type": "array",
+            "title": "Categories",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SubgroupNode"
+      },
       "Token": {
         "properties": {
           "access_token": {
@@ -1718,6 +1994,22 @@
           "risk_vector"
         ],
         "title": "TopAsset"
+      },
+      "UniverseTreeResponse": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupNode"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "title": "UniverseTreeResponse"
       },
       "User": {
         "properties": {

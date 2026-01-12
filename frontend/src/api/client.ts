@@ -16,6 +16,11 @@ import type {
   MetricSnapshotOut,
   LeaderboardItem,
   AlertOut,
+  ImportTaxonomyResponse,
+  PaginatedAssetsResponse,
+  AssetItem,
+  ExportTaxonomyResponse,
+  TaxonomyPayload,
 } from './types'
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -93,6 +98,11 @@ export type {
   MetricSnapshotOut,
   LeaderboardItem,
   AlertOut,
+  ImportTaxonomyResponse,
+  PaginatedAssetsResponse,
+  AssetItem,
+  ExportTaxonomyResponse,
+  TaxonomyPayload,
 }
 
 /**
@@ -152,8 +162,8 @@ export async function recomputeAlerts(): Promise<{ status: string }> {
 /**
  * Import taxonomy (bulk import groups/subgroups/categories/assets)
  */
-export async function importTaxonomy(payload: any): Promise<any> {
-  return typedPost<any, any>(`/import/taxonomy`, payload)
+export async function importTaxonomy(payload: TaxonomyPayload): Promise<ImportTaxonomyResponse> {
+  return typedPost<TaxonomyPayload, ImportTaxonomyResponse>(`/import/taxonomy`, payload)
 }
 
 /**
@@ -172,5 +182,12 @@ export async function getCategoryAssetsPaginated(
   if (options?.offset !== undefined) params.set('offset', options.offset.toString())
   if (options?.q) params.set('q', options.q)
   const query = params.toString() ? `?${params.toString()}` : ''
-  return typedGet<any>(`/assets/category/${categoryId}/paginated${query}`)
+  return typedGet<PaginatedAssetsResponse>(`/assets/category/${categoryId}/paginated${query}`)
+}
+
+/**
+ * Export taxonomy in the same structure accepted by the import endpoint
+ */
+export async function exportTaxonomy(): Promise<ExportTaxonomyResponse> {
+  return typedGet<ExportTaxonomyResponse>(`/export/taxonomy`)
 }

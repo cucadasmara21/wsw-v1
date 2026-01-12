@@ -15,6 +15,7 @@ from services.rbac_service import require_role, has_role_or_higher, ROLE_VIEWER,
 from services.metrics_registry import registry
 from services.alerts_service import AlertsService
 from services.metrics_engine import compute_metrics_for_asset, save_snapshot, latest_snapshot, leaderboard
+from services import audit_service
 
 router = APIRouter(tags=["metrics"])
 
@@ -110,6 +111,17 @@ async def recompute_metric_snapshot(
         raise HTTPException(status_code=404, detail="Asset not found")
     result = compute_metrics_for_asset(db, asset)
     snap = save_snapshot(db, asset_id, result)
+    try:
+        audit_service.log_action(
+            action="recompute_metrics",
+            entity_type="asset",
+            entity_id=asset_id,
+            metadata={},
+            db=db,
+            user=user,
+        )
+    except Exception:
+        pass
     return snap
 
 

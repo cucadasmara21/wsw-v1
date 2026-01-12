@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { importTaxonomy } from '../api/client'
+import { importTaxonomy, exportTaxonomy } from '../api/client'
 import type { ImportTaxonomyResponse } from '../api/types'
 
 export function ImportTaxonomyPage() {
   const [jsonText, setJsonText] = useState('')
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<ImportTaxonomyResponse | null>(null)
 
@@ -41,6 +42,34 @@ export function ImportTaxonomyPage() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExport = async () => {
+    setError(null)
+    setSuccess(null)
+    setExporting(true)
+
+    try {
+      const data = await exportTaxonomy()
+      const payload = data?.items ?? []
+      const json = JSON.stringify(payload, null, 2)
+
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'taxonomy_export.json'
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      setError(`❌ Export failed: ${errorMsg}`)
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -96,8 +125,8 @@ export function ImportTaxonomyPage() {
         </div>
       </div>
 
-      {/* Import Button */}
-      <div style={{ marginBottom: '1.5rem' }}>
+      {/* Import/Export Buttons */}
+      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.75rem' }}>
         <button
           onClick={handleImport}
           disabled={loading || !jsonText.trim()}
@@ -124,6 +153,34 @@ export function ImportTaxonomyPage() {
           }}
         >
           {loading ? '⏳ Importing...' : '📤 Import'}
+        </button>
+
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          style={{
+            padding: '0.75rem 1.5rem',
+            background: exporting ? '#cbd5e1' : '#0ea5e9',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: exporting ? 'not-allowed' : 'pointer',
+            fontSize: '1rem',
+            fontWeight: 'bold',
+            transition: 'background 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            if (!exporting) {
+              e.currentTarget.style.background = '#0284c7'
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!exporting) {
+              e.currentTarget.style.background = '#0ea5e9'
+            }
+          }}
+        >
+          {exporting ? '⏳ Exporting...' : '⬇️ Export'}
         </button>
       </div>
 

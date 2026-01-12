@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User
 from services.rbac_service import require_role, ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN
-from services import selection_service
+from services import selection_service, audit_service
 
 router = APIRouter(tags=["selection"])
 
@@ -103,6 +103,18 @@ async def recompute_selection(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Selection recompute failed: {str(e)}")
+    finally:
+        try:
+            audit_service.log_action(
+                action="recompute_selection",
+                entity_type="category",
+                entity_id=category_id,
+                metadata={"top_n": top_n, "lookback_days": lookback_days},
+                db=db,
+                user=user,
+            )
+        except Exception:
+            pass
 
 
 @router.get(

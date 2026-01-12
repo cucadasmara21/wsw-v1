@@ -12,6 +12,7 @@ from database import get_db
 from models import User, Group, Subgroup, Category, Asset, CategoryAsset
 from services.rbac_service import require_role, ROLE_ADMIN
 from config import settings
+from services import audit_service
 
 router = APIRouter(tags=["import"])
 
@@ -201,6 +202,15 @@ async def import_taxonomy(
                         stats["links_created"] += 1
         
         db.commit()
+        # Audit (best-effort)
+        audit_service.log_action(
+            action="import_taxonomy",
+            entity_type="taxonomy",
+            entity_id=None,
+            metadata=stats,
+            db=db,
+            user=user,
+        )
         return stats
     
     except ValueError as e:

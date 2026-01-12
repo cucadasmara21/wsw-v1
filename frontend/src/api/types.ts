@@ -82,6 +82,37 @@ export type ImportTaxonomyResponse = {
   errors: string[]
 }
 
+export type TaxonomyAsset = {
+  symbol: string
+  name: string
+}
+
+export type TaxonomyCategory = {
+  name: string
+  code: string
+  asset_type?: string
+  assets: TaxonomyAsset[]
+}
+
+export type TaxonomySubgroup = {
+  name: string
+  code: string
+  categories: TaxonomyCategory[]
+}
+
+export type TaxonomyPayload = {
+  group: {
+    name: string
+    code: string
+  }
+  subgroups: TaxonomySubgroup[]
+}
+
+export type ExportTaxonomyResponse = {
+  items: TaxonomyPayload[]
+  count: number
+}
+
 // Paginated assets schemas
 export type AssetItem = {
   id: number

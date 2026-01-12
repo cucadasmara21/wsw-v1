@@ -332,3 +332,24 @@ class SelectionRun(Base):
     __table_args__ = (
         Index("ix_selection_runs_category_created", "category_id", "created_at"),
     )
+
+
+class AuditLog(Base):
+    """Minimal audit log for sensitive actions"""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    action = Column(String(100), nullable=False, index=True)
+    entity_type = Column(String(64), nullable=False)
+    entity_id = Column(String(64), nullable=True)
+
+    metadata_json = Column(JSON, default=dict)
+    request_id = Column(String(64))
+    ip = Column(String(64))
+
+    __table_args__ = (
+        Index("ix_audit_logs_action_ts", "action", "ts"),
+    )

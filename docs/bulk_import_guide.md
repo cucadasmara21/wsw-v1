@@ -223,9 +223,28 @@ Step 3: Importing taxonomy...
 ✅ Demo completed successfully!
 
 💡 Next steps:
-   1. Visit http://localhost:3000 to see the imported assets
+   1. Visit http://localhost:5173 to see the imported assets (frontend)
+   2. Backend API at http://localhost:8000
    ...
 ```
+
+---
+
+## Exportar Taxonomía
+
+### Desde la API (curl)
+
+```bash
+curl -H "Authorization: Bearer <ADMIN_TOKEN>" \
+     http://localhost:8000/api/export/taxonomy \
+     -o taxonomy_export.json
+```
+
+### Desde la UI
+
+1. Ir a `/import-taxonomy` (frontend http://localhost:5173)
+2. Click en el botón **Export**
+3. Se descarga `taxonomy_export.json` compatible con el endpoint de importación
 
 ---
 

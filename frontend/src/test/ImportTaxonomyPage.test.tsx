@@ -72,4 +72,31 @@ describe('ImportTaxonomyPage', () => {
     expect(createObjectUrl).toHaveBeenCalled()
     expect(clickSpy).toHaveBeenCalled()
   })
+
+  it('loads sample Group 1 JSON when button is clicked', async () => {
+    const user = userEvent.setup()
+    
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          items: [
+            { type: 'group', name: 'Test Group', code: 'TG' },
+            { type: 'asset', symbol: 'TEST', name: 'Test Asset' }
+          ]
+        }),
+      } as Response)
+    )
+
+    render(<ImportTaxonomyPage />)
+
+    const loadButton = screen.getByRole('button', { name: /Load Sample Group 1/i })
+    await user.click(loadButton)
+
+    expect(global.fetch).toHaveBeenCalledWith('/samples/group1.json')
+    
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(textarea.value).toContain('Test Group')
+    expect(textarea.value).toContain('Test Asset')
+  })
 })

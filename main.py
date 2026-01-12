@@ -265,6 +265,51 @@ async def health_check():
 
     overall_status = "healthy" if db_status == "healthy" else "degraded"
 
+    # Data quality KPIs
+    data_quality = {
+        "cached_percent": 0.0,
+        "stale_percent": 0.0,
+        "avg_confidence": 0.0,
+        "provider_errors": 0,
+        "rate_limited": 0
+    }
+
+    try:
+        from services.data_service import DataService
+        from database import SessionLocal
+        from datetime import timedelta
+        
+        db = SessionLocal()
+        try:
+            data_service = DataService(db)
+            
+            # Calculate cache hit rate
+            cache_stats = cache_service.get_stats() if hasattr(cache_service, 'get_stats') else {}
+            if cache_stats.get('total_requests', 0) > 0:
+                data_quality['cached_percent'] = round(
+                    (cache_stats.get('hits', 0) / cache_stats['total_requests']) * 100, 2
+                )
+            
+            # Calculate stale data (prices older than 7 days)
+            total_prices = data_service.count_prices()
+            if total_prices > 0:
+                cutoff = datetime.utcnow() - timedelta(days=7)
+                stale_count = db.execute(
+                    text("SELECT COUNT(*) FROM prices WHERE time < :cutoff"),
+                    {"cutoff": cutoff}
+                ).scalar() or 0
+                data_quality['stale_percent'] = round((stale_count / total_prices) * 100, 2)
+            
+            # Mock avg confidence and error counts (extend with real metrics later)
+            data_quality['avg_confidence'] = 95.5  # Placeholder
+            data_quality['provider_errors'] = 0  # Placeholder
+            data_quality['rate_limited'] = 0  # Placeholder
+            
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug(f"Data quality KPIs calculation skipped: {e}")
+
     return {
         "status":  overall_status,
         "timestamp": datetime.utcnow().isoformat(),
@@ -273,6 +318,7 @@ async def health_check():
             "cache": redis_status,
             "neo4j": neo4j_status
         },
+        "data_quality": data_quality,
         "environment": settings.ENVIRONMENT,
         "debug": settings.DEBUG
     }

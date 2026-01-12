@@ -6,8 +6,30 @@ export function ImportTaxonomyPage() {
   const [jsonText, setJsonText] = useState('')
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [loadingSample, setLoadingSample] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<ImportTaxonomyResponse | null>(null)
+
+  const handleLoadSample = async () => {
+    setError(null)
+    setSuccess(null)
+    setLoadingSample(true)
+
+    try {
+      const response = await fetch('/samples/group1.json')
+      if (!response.ok) {
+        throw new Error('Failed to load sample file')
+      }
+      const data = await response.json()
+      const formatted = JSON.stringify(data, null, 2)
+      setJsonText(formatted)
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      setError(`❌ Failed to load sample: ${errorMsg}`)
+    } finally {
+      setLoadingSample(false)
+    }
+  }
 
   const handleImport = async () => {
     setError(null)
@@ -123,6 +145,37 @@ export function ImportTaxonomyPage() {
         <div style={{ fontSize: '0.875rem', color: '#64748b', marginTop: '0.5rem' }}>
           {jsonText.length} characters
         </div>
+      </div>
+
+      {/* Load Sample Button */}
+      <div style={{ marginBottom: '1rem' }}>
+        <button
+          onClick={handleLoadSample}
+          disabled={loadingSample}
+          style={{
+            padding: '0.5rem 1.5rem',
+            background: loadingSample ? '#cbd5e1' : '#10b981',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: loadingSample ? 'not-allowed' : 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 'bold',
+            transition: 'background 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            if (!loadingSample) {
+              e.currentTarget.style.background = '#059669'
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!loadingSample) {
+              e.currentTarget.style.background = '#10b981'
+            }
+          }}
+        >
+          {loadingSample ? '⏳ Loading...' : '📁 Load Sample Group 1'}
+        </button>
       </div>
 
       {/* Import/Export Buttons */}

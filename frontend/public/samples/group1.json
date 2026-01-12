@@ -1,0 +1,49 @@
+{
+  "group": {
+    "name": "Overleveraged Real Estate & MBS-Related Assets",
+    "code": "RE-MBS"
+  },
+  "subgroups": [
+    {
+      "name": "Commercial Real Estate Loans",
+      "code": "RE-MBS-CRE",
+      "categories": [
+        {
+          "name": "Office Property Loans",
+          "code": "RE-MBS-CRE-OFF",
+          "asset_type": "loan",
+          "assets": [
+            {"symbol": "JPM-MAN-OFFICE", "name": "JPMorgan Chase - Manhattan Commercial Office Loan"},
+            {"symbol": "WFC-SF-OFFICE", "name": "Wells Fargo - Downtown San Francisco CRE Loan"},
+            {"symbol": "GS-NYC-CMBS", "name": "Goldman Sachs - Midtown NYC Office CMBS"},
+            {"symbol": "SAN-MAD-OFFICE", "name": "Santander - Madrid Office Loan Portfolio"},
+            {"symbol": "UBS-ZRH-OFFICE", "name": "UBS - Zurich Commercial Office Loan"}
+          ]
+        },
+        {
+          "name": "Retail Mall Mortgages",
+          "code": "RE-MBS-CRE-RET",
+          "asset_type": "mortgage",
+          "assets": [
+            {"symbol": "SPG-MALL-CMBS", "name": "Simon Property Group - Mall CMBS Tranche 2021-A"},
+            {"symbol": "BPY-CAN-MALL", "name": "Brookfield Retail Loan Facility (Canada)"},
+            {"symbol": "URW-PAR-MALL", "name": "Unibail-Rodamco - Paris Mall Securitized Debt"},
+            {"symbol": "GGP-RETAIL-POOL", "name": "General Growth Properties - Retail Mortgage Pool"}
+          ]
+        },
+        {
+          "name": "Industrial Park Credit Lines",
+          "code": "RE-MBS-CRE-IND",
+          "asset_type": "credit_line",
+          "assets": [
+            {"symbol": "PLD", "name": "Prologis - Logistics Park Financing Facility"},
+            {"symbol": "GMG-ASIA-IND", "name": "Goodman Group - Asia Industrial Loan Program"},
+            {"symbol": "GLP-CN-IND", "name": "GLP - China Industrial Warehouse Financing"},
+            {"symbol": "SEGRO-UK-IND", "name": "Segro - UK Industrial Estate Revolver"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+

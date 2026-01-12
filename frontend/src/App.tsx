@@ -5,6 +5,8 @@ import { OverviewPage } from './pages/OverviewPage'
 import { UniversePage } from './pages/UniversePage'
 import { AssetDetailPage } from './pages/AssetDetailPage'
 import Health from './components/Health'
+import { MetricsPage } from './pages/MetricsPage'
+import { AlertsPage } from './pages/AlertsPage'
 
 export default function App() {
   return (
@@ -15,6 +17,8 @@ export default function App() {
           <Route path="universe" element={<UniversePage />} />
           <Route path="assets/:id" element={<AssetDetailPage />} />
           <Route path="health" element={<Health />} />
+          <Route path="metrics" element={<MetricsPage />} />
+          <Route path="alerts" element={<AlertsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

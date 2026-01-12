@@ -24,6 +24,12 @@ export function Layout() {
           <Link to="/health" className={isActive('/health')}>
             ❤️ Health
           </Link>
+            <Link to="/metrics" className={isActive('/metrics')}>
+              📈 Metrics
+            </Link>
+            <Link to="/alerts" className={isActive('/alerts')}>
+              🔔 Alerts
+            </Link>
         </nav>
       </aside>
       <main className="main-content">

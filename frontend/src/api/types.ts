@@ -27,6 +27,44 @@ export type MarketRisk = components['schemas']['MarketRisk']
 export type MarketRiskComponents = components['schemas']['MarketRiskComponents']
 export type MarketSnapshot = components['schemas']['MarketSnapshotResponse']
 
+// Metrics schemas
+export type MetricSnapshotOut = {
+  id: number
+  asset_id: number
+  as_of: string
+  metrics: Record<string, number>
+  score: number
+  explain: {
+    items?: Array<{
+      metric_id: string
+      raw_value: number
+      normalized_score: number
+      weight: number
+      contribution: number
+    }>
+  }
+  created_at: string
+}
+
+export type LeaderboardItem = {
+  asset_id: number
+  symbol: string
+  name: string | null
+  score: number
+}
+
+// Alert schemas
+export type AlertOut = {
+  id: number
+  asset_id: number
+  key: string
+  severity: string
+  message: string
+  triggered_at: string
+  resolved_at: string | null
+  payload: Record<string, any>
+}
+
 // Validation schemas
 export type ValidationError = components['schemas']['ValidationError']
 export type HTTPValidationError = components['schemas']['HTTPValidationError']

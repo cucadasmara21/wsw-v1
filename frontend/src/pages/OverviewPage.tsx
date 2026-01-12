@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../lib/api'
-import { getLeaderboard, listAlerts } from '../api/client'
+import { getLeaderboard, listAlerts, getCategorySelectionCurrent, recomputeCategorySelection } from '../api/client'
 import type { Asset, LeaderboardItem, AlertOut } from '../api/types'
+
+interface SelectedAsset {
+  asset_id: number
+  symbol: string
+  name: string
+  score?: number
+  rank?: number
+  score_ema?: number
+  data_meta?: { cached?: boolean; stale?: boolean; confidence?: number; source?: string }
+}
 
 export function OverviewPage() {
   const navigate = useNavigate()
@@ -24,6 +34,13 @@ export function OverviewPage() {
   const [alertsLoading, setAlertsLoading] = useState(false)
   const [alertsError, setAlertsError] = useState<string | null>(null)
   
+  // Selection widget state
+  const [selectedAssets, setSelectedAssets] = useState<SelectedAsset[]>([])
+  const [selectionLoading, setSelectionLoading] = useState(false)
+  const [selectionError, setSelectionError] = useState<string | null>(null)
+  const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null)
+  const [recomputeInProgress, setRecomputeInProgress] = useState(false)
+  
   useEffect(() => {
     async function loadData() {
       try {
@@ -31,7 +48,7 @@ export function OverviewPage() {
         const assets = await apiClient.get<Asset[]>('/api/assets/?limit=5')
         setRecentAssets(assets)
         
-        // Load tree to count groups
+        // Load tree to count groups and extract first category
         const tree = await apiClient.get<{ groups: any[] }>('/api/universe/tree')
         
         setStats({
@@ -39,6 +56,14 @@ export function OverviewPage() {
           totalGroups: tree.groups.length,
           loading: false
         })
+        
+        // Extract first category ID from tree
+        if (tree.groups && tree.groups.length > 0) {
+          const firstSubgroup = tree.groups[0].subgroups?.[0]
+          if (firstSubgroup && firstSubgroup.categories && firstSubgroup.categories.length > 0) {
+            setDefaultCategoryId(firstSubgroup.categories[0].id)
+          }
+        }
       } catch (err) {
         console.error('Failed to load overview:', err)
         setStats(prev => ({ ...prev, loading: false }))
@@ -47,6 +72,66 @@ export function OverviewPage() {
     
     loadData()
   }, [])
+  
+  // Load current selection when category ID is available
+  useEffect(() => {
+    if (!defaultCategoryId) return
+    
+    async function loadSelection() {
+      setSelectionLoading(true)
+      setSelectionError(null)
+      try {
+        const data = await getCategorySelectionCurrent(defaultCategoryId, 10)
+        setSelectedAssets(data.selected || [])
+      } catch (err: any) {
+        const errorMsg = err.message || String(err)
+        if (errorMsg.includes('401') || errorMsg.includes('403')) {
+          setSelectionError('Unauthorized to view selection.')
+        } else if (errorMsg.includes('429')) {
+          setSelectionError('Rate limited. Please try again in a moment.')
+        } else if (errorMsg.includes('503')) {
+          setSelectionError('Selection service temporarily unavailable.')
+        } else if (errorMsg.includes('404')) {
+          setSelectionError('Category or selection data not found.')
+        } else {
+          setSelectionError('Failed to load selection.')
+        }
+        setSelectedAssets([])
+      } finally {
+        setSelectionLoading(false)
+      }
+    }
+    
+    loadSelection()
+  }, [defaultCategoryId])
+  
+  // Handle recompute
+  const handleRecompute = async () => {
+    if (!defaultCategoryId || recomputeInProgress) return
+    
+    const confirmed = window.confirm('Recompute selection with lookback_days=90? This may take a moment.')
+    if (!confirmed) return
+    
+    setRecomputeInProgress(true)
+    setSelectionError(null)
+    try {
+      const data = await recomputeCategorySelection(defaultCategoryId, 10, 90)
+      setSelectedAssets(data.selected || [])
+    } catch (err: any) {
+      const errorMsg = err.message || String(err)
+      if (errorMsg.includes('401') || errorMsg.includes('403')) {
+        setSelectionError('Admin access required for recompute.')
+      } else if (errorMsg.includes('429')) {
+        setSelectionError('Rate limited. Please try again in a moment.')
+      } else if (errorMsg.includes('503')) {
+        setSelectionError('Selection service temporarily unavailable.')
+      } else {
+        setSelectionError('Recompute failed.')
+      }
+    } finally {
+      setRecomputeInProgress(false)
+    }
+  }
   
   // Load leaderboard
   useEffect(() => {
@@ -188,6 +273,136 @@ export function OverviewPage() {
                     }}>
                       {(item.score * 100).toFixed(1)}
                     </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Top Selected Assets Widget */}
+      <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0 }}>Top Selected Assets</h2>
+          <button
+            onClick={handleRecompute}
+            disabled={!defaultCategoryId || recomputeInProgress}
+            style={{
+              padding: '0.5rem 1rem',
+              background: recomputeInProgress ? '#cbd5e1' : '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '0.875rem',
+              cursor: recomputeInProgress ? 'not-allowed' : 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            {recomputeInProgress ? 'Recomputing...' : 'Recompute'}
+          </button>
+        </div>
+
+        {selectionError && (
+          <div style={{ padding: '1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '6px', marginBottom: '1rem' }}>
+            {selectionError}
+          </div>
+        )}
+
+        {selectionLoading && !selectionError && (
+          <div style={{ color: '#64748b', padding: '1rem', textAlign: 'center' }}>Loading selection...</div>
+        )}
+
+        {!selectionLoading && !selectionError && selectedAssets.length === 0 && (
+          <div style={{ color: '#64748b', fontStyle: 'italic', padding: '1rem', textAlign: 'center' }}>No selected assets yet. Click "Recompute" to generate.</div>
+        )}
+
+        {!selectionLoading && !selectionError && selectedAssets.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ textAlign: 'left', padding: '0.75rem', width: '60px' }}>Rank</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem' }}>Symbol</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem' }}>Name</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem', width: '100px' }}>Score</th>
+                <th style={{ textAlign: 'center', padding: '0.75rem', width: '80px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedAssets.map((item, idx) => (
+                <tr key={item.asset_id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <td style={{ padding: '0.75rem', fontWeight: '500', color: '#64748b' }}>#{idx + 1}</td>
+                  <td style={{ padding: '0.75rem', fontWeight: '500' }}>{item.symbol}</td>
+                  <td style={{ padding: '0.75rem' }}>{item.name || 'N/A'}</td>
+                  <td style={{ padding: '0.75rem' }}>
+                    {item.score !== undefined ? (
+                      <span
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background:
+                            item.score >= 0.7
+                              ? '#fee2e2'
+                              : item.score >= 0.4
+                                ? '#fef3c7'
+                                : '#d1fae5',
+                          color:
+                            item.score >= 0.7
+                              ? '#991b1b'
+                              : item.score >= 0.4
+                                ? '#92400e'
+                                : '#065f46',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                          fontWeight: '600'
+                        }}
+                      >
+                        {(item.score * 100).toFixed(1)}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                      {item.data_meta?.cached && (
+                        <span
+                          title="Cached"
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: '#d1fae5',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            color: '#065f46'
+                          }}
+                        >
+                          ✓
+                        </span>
+                      )}
+                      {item.data_meta?.stale && (
+                        <span
+                          title="Stale"
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: '#fef3c7',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            color: '#92400e'
+                          }}
+                        >
+                          ⚠
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

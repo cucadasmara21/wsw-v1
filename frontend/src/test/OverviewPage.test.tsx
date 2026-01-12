@@ -18,11 +18,16 @@ vi.mock('../lib/api', () => ({
 
 vi.mock('../api/client', () => ({
   getLeaderboard: vi.fn(),
+  getCategorySelectionCurrent: vi.fn(),
+  recomputeCategorySelection: vi.fn(),
+  listAlerts: vi.fn(),
 }))
 
 describe('OverviewPage', () => {
   it('renders overview title', () => {
     ;(apiClient.getLeaderboard as any).mockResolvedValue([])
+    ;(apiClient.getCategorySelectionCurrent as any).mockResolvedValue({ selected: [] })
+    ;(apiClient.listAlerts as any).mockResolvedValue([])
     
     render(
       <MemoryRouter>
@@ -35,6 +40,8 @@ describe('OverviewPage', () => {
   
   it('renders stat cards', () => {
     ;(apiClient.getLeaderboard as any).mockResolvedValue([])
+    ;(apiClient.getCategorySelectionCurrent as any).mockResolvedValue({ selected: [] })
+    ;(apiClient.listAlerts as any).mockResolvedValue([])
     
     render(
       <MemoryRouter>
@@ -55,6 +62,8 @@ describe('OverviewPage', () => {
     }))
 
     ;(apiClient.getLeaderboard as any).mockResolvedValue(mockLeaderboard)
+    ;(apiClient.getCategorySelectionCurrent as any).mockResolvedValue({ selected: [] })
+    ;(apiClient.listAlerts as any).mockResolvedValue([])
 
     render(
       <MemoryRouter>
@@ -82,6 +91,8 @@ describe('OverviewPage', () => {
     ]
 
     ;(apiClient.getLeaderboard as any).mockResolvedValue(mockLeaderboard)
+    ;(apiClient.getCategorySelectionCurrent as any).mockResolvedValue({ selected: [] })
+    ;(apiClient.listAlerts as any).mockResolvedValue([])
 
     const navigateSpy = vi.fn()
 
@@ -108,6 +119,8 @@ describe('OverviewPage', () => {
 
   it('displays error on leaderboard failure', async () => {
     ;(apiClient.getLeaderboard as any).mockRejectedValue(new Error('503 Service Unavailable'))
+    ;(apiClient.getCategorySelectionCurrent as any).mockResolvedValue({ selected: [] })
+    ;(apiClient.listAlerts as any).mockResolvedValue([])
 
     render(
       <MemoryRouter>

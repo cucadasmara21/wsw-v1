@@ -16,6 +16,8 @@ import type {
   MetricSnapshotOut,
   LeaderboardItem,
   AlertOut,
+  SelectionItem,
+  CategorySelection,
 } from './types'
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -93,6 +95,8 @@ export type {
   MetricSnapshotOut,
   LeaderboardItem,
   AlertOut,
+  SelectionItem,
+  CategorySelection,
 }
 
 /**
@@ -148,4 +152,42 @@ export async function resolveAlert(alertId: number): Promise<any> {
  */
 export async function recomputeAlerts(): Promise<{ status: string }> {
   return typedPost<{}, { status: string }>(`/alerts/recompute`, {})
+}
+/**
+ * Get current selection for a category
+ */
+export async function getCategorySelectionCurrent(
+  categoryId: number,
+  topN: number = 10
+): Promise<CategorySelection> {
+  return typedGet<CategorySelection>(
+    `/selection/categories/${categoryId}/current?top_n=${topN}`
+  )
+}
+
+/**
+ * Preview selection for a category
+ */
+export async function previewCategorySelection(
+  categoryId: number,
+  topN: number = 10,
+  lookbackDays: number = 90
+): Promise<CategorySelection> {
+  return typedGet<CategorySelection>(
+    `/selection/categories/${categoryId}/preview?top_n=${topN}&lookback_days=${lookbackDays}`
+  )
+}
+
+/**
+ * Recompute selection for a category
+ */
+export async function recomputeCategorySelection(
+  categoryId: number,
+  topN: number = 10,
+  lookbackDays: number = 90
+): Promise<CategorySelection> {
+  return typedPost<{}, CategorySelection>(
+    `/selection/categories/${categoryId}/recompute?top_n=${topN}&lookback_days=${lookbackDays}`,
+    {}
+  )
 }

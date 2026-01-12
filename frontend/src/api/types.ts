@@ -65,6 +65,26 @@ export type AlertOut = {
   payload: Record<string, any>
 }
 
-// Validation schemas
-export type ValidationError = components['schemas']['ValidationError']
-export type HTTPValidationError = components['schemas']['HTTPValidationError']
+// Selection schemas
+export type SelectionItem = {
+  asset_id: number
+  symbol: string
+  name: string
+  score?: number
+  rank?: number
+  score_ema?: number
+  explain?: Record<string, any>
+  data_meta?: {
+    cached?: boolean
+    stale?: boolean
+    confidence?: number
+    source?: string
+  }
+}
+
+export type CategorySelection = {
+  selected: SelectionItem[]
+  candidates?: SelectionItem[]
+  meta?: Record<string, any>
+}
+

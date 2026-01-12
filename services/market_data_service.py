@@ -100,6 +100,27 @@ class MarketKPIs:
 market_kpis = MarketKPIs()
 
 
+def get_kpis_snapshot() -> Dict[str, Any]:
+    """Return a flat, JSON-serializable snapshot of data quality KPIs."""
+    k = market_kpis.get_stats()
+    total = max(0, int(k.get("total_requests", 0)))
+    hits = max(0, int(k.get("cache_hits", 0)))
+    stale = max(0, int(k.get("stale_responses", 0)))
+    conf_sum = float(k.get("confidence_sum", 0.0))
+    conf_cnt = max(0, int(k.get("confidence_count", 0)))
+
+    return {
+        "total_requests": total,
+        "cache_hits": hits,
+        "stale_responses": stale,
+        "provider_errors": max(0, int(k.get("provider_errors", 0))),
+        "rate_limited": max(0, int(k.get("rate_limited", 0))),
+        "cached_percent": round(((hits / total) * 100) if total > 0 else 0.0, 2),
+        "stale_percent": round(((stale / total) * 100) if total > 0 else 0.0, 2),
+        "avg_confidence": round((conf_sum / conf_cnt) if conf_cnt > 0 else 0.0, 4),
+    }
+
+
 def _ensure_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value

@@ -20,7 +20,7 @@ from database import engine, get_db, init_database, test_connections, neo4j_driv
 from models import Base
 from api import assets, risk, scenarios, auth, market, universe, metrics, alerts, selection, import_endpoints, export_endpoints
 from services.cache_service import cache_service
-from services.market_data_service import market_kpis
+from services.market_data_service import get_kpis_snapshot
 from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
 # Build info
@@ -276,18 +276,7 @@ async def health_check():
     }
 
     try:
-        k = market_kpis.get_stats()
-        total = max(0, int(k.get("total_requests", 0)))
-        hits = max(0, int(k.get("cache_hits", 0)))
-        stale = max(0, int(k.get("stale_responses", 0)))
-        conf_sum = float(k.get("confidence_sum", 0.0))
-        conf_cnt = max(0, int(k.get("confidence_count", 0)))
-
-        data_quality["cached_percent"] = round(((hits / total) * 100) if total > 0 else 0.0, 2)
-        data_quality["stale_percent"] = round(((stale / total) * 100) if total > 0 else 0.0, 2)
-        data_quality["avg_confidence"] = round((conf_sum / conf_cnt) if conf_cnt > 0 else 0.0, 4)
-        data_quality["provider_errors"] = max(0, int(k.get("provider_errors", 0)))
-        data_quality["rate_limited"] = max(0, int(k.get("rate_limited", 0)))
+        data_quality = get_kpis_snapshot()
     except Exception as e:
         logger.debug(f"Data quality KPIs calculation skipped: {e}")
 

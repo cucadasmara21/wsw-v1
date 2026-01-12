@@ -68,3 +68,37 @@ export type AlertOut = {
 // Validation schemas
 export type ValidationError = components['schemas']['ValidationError']
 export type HTTPValidationError = components['schemas']['HTTPValidationError']
+// Import taxonomy schemas
+export type ImportTaxonomyResponse = {
+  groups_created: number
+  groups_updated: number
+  subgroups_created: number
+  subgroups_updated: number
+  categories_created: number
+  categories_updated: number
+  assets_created: number
+  assets_updated: number
+  links_created: number
+  errors: string[]
+}
+
+// Paginated assets schemas
+export type AssetItem = {
+  id: number
+  symbol: string
+  name: string | null
+  sector?: string | null
+  category_id?: number | null
+  exchange?: string | null
+  country?: string | null
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export type PaginatedAssetsResponse = {
+  items: AssetItem[]
+  total: number
+  limit: number
+  offset: number
+}

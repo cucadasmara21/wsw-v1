@@ -149,3 +149,28 @@ export async function resolveAlert(alertId: number): Promise<any> {
 export async function recomputeAlerts(): Promise<{ status: string }> {
   return typedPost<{}, { status: string }>(`/alerts/recompute`, {})
 }
+/**
+ * Import taxonomy (bulk import groups/subgroups/categories/assets)
+ */
+export async function importTaxonomy(payload: any): Promise<any> {
+  return typedPost<any, any>(`/import/taxonomy`, payload)
+}
+
+/**
+ * Get paginated assets for a category with optional search
+ */
+export async function getCategoryAssetsPaginated(
+  categoryId: number,
+  options?: {
+    limit?: number
+    offset?: number
+    q?: string
+  }
+): Promise<any> {
+  const params = new URLSearchParams()
+  if (options?.limit !== undefined) params.set('limit', options.limit.toString())
+  if (options?.offset !== undefined) params.set('offset', options.offset.toString())
+  if (options?.q) params.set('q', options.q)
+  const query = params.toString() ? `?${params.toString()}` : ''
+  return typedGet<any>(`/assets/category/${categoryId}/paginated${query}`)
+}

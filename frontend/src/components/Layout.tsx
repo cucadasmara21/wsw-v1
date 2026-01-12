@@ -30,6 +30,9 @@ export function Layout() {
             <Link to="/alerts" className={isActive('/alerts')}>
               🔔 Alerts
             </Link>
+            <Link to="/import-taxonomy" className={isActive('/import-taxonomy')}>
+              📦 Import Taxonomy
+            </Link>
         </nav>
       </aside>
       <main className="main-content">

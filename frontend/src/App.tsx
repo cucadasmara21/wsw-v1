@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { OverviewPage } from './pages/OverviewPage'
 import { UniversePage } from './pages/UniversePage'
 import { AssetDetailPage } from './pages/AssetDetailPage'
+import { ImportTaxonomyPage } from './pages/ImportTaxonomyPage'
 import Health from './components/Health'
 import { MetricsPage } from './pages/MetricsPage'
 import { AlertsPage } from './pages/AlertsPage'
@@ -16,6 +17,7 @@ export default function App() {
           <Route index element={<OverviewPage />} />
           <Route path="universe" element={<UniversePage />} />
           <Route path="assets/:id" element={<AssetDetailPage />} />
+          <Route path="import-taxonomy" element={<ImportTaxonomyPage />} />
           <Route path="health" element={<Health />} />
           <Route path="metrics" element={<MetricsPage />} />
           <Route path="alerts" element={<AlertsPage />} />

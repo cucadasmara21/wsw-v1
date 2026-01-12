@@ -18,7 +18,7 @@ from sqlalchemy import text
 from config import settings
 from database import engine, get_db, init_database, test_connections, neo4j_driver
 from models import Base
-from api import assets, risk, scenarios, auth, market, universe, metrics, alerts
+from api import assets, risk, scenarios, auth, market, universe, metrics, alerts, selection, import_endpoints
 from services.cache_service import cache_service
 from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
@@ -213,6 +213,8 @@ app.include_router(scenarios.router, prefix="/api/scenarios")
 app.include_router(market.router, prefix="/api/market")
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(selection.router, prefix="/api/selection", tags=["selection"])
+app.include_router(import_endpoints.router, prefix="/api/import", tags=["import"])
 
 
 @app.get("/")

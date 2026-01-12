@@ -5,10 +5,12 @@ Provides TestClient for FastAPI app testing
 import pytest
 from typing import Generator
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from main import app
 from services.rbac_service import require_role
 from api.auth import get_current_user
+from database import SessionLocal
 
 
 @pytest.fixture(scope="module")
@@ -52,3 +54,13 @@ def client() -> Generator[TestClient, None, None]:
             # If seeding fails, continue; some tests tolerate empty state
             pass
         yield test_client
+
+
+@pytest.fixture(scope="function")
+def db_session() -> Generator[Session, None, None]:
+    """Provide a database session for tests"""
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()

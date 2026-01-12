@@ -5,7 +5,7 @@ Modelos SQLAlchemy unificados
 Compatible con SQLAlchemy 2.x
 SCHEMA UNIFICADO: prices(time, asset_id, close, ...)
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, BigInteger, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, BigInteger, JSON, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -285,4 +285,50 @@ class Alert(Base):
     __table_args__ = (
         Index("ix_alerts_asset_triggered", "asset_id", "triggered_at"),
         Index("ix_alerts_severity", "severity"),
+    )
+
+
+class CategoryAsset(Base):
+    """Association table for dynamic category selection with scoring"""
+    __tablename__ = "category_assets"
+
+    category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), primary_key=True, index=True)
+    
+    is_candidate = Column(Boolean, default=True, nullable=False)
+    is_selected = Column(Boolean, default=False, nullable=False, index=True)
+    
+    last_score = Column(Float)
+    last_rank = Column(Integer)
+    score_ema = Column(Float)  # Exponential moving average for stability
+    
+    last_selected_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_category_assets_category_selected", "category_id", "is_selected"),
+        Index("ix_category_assets_score", "category_id", "last_score"),
+    )
+
+
+class SelectionRun(Base):
+    """Record of dynamic selection algorithm execution"""
+    __tablename__ = "selection_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), index=True, nullable=False)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    top_n = Column(Integer, nullable=False)
+    lookback_days = Column(Integer, nullable=False)
+    
+    weights_json = Column(JSON, default=dict)  # Algorithm weights/params
+    notes = Column(String(500))
+    
+    results_json = Column(JSON, default=dict)  # Selected assets with scores/explain
+
+    __table_args__ = (
+        Index("ix_selection_runs_category_created", "category_id", "created_at"),
     )

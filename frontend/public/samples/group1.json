@@ -1,49 +1,417 @@
 {
   "group": {
-    "name": "Overleveraged Real Estate & MBS-Related Assets",
-    "code": "RE-MBS"
+    "name": "Group 1",
+    "code": "GROUP_1"
   },
   "subgroups": [
     {
-      "name": "Commercial Real Estate Loans",
-      "code": "RE-MBS-CRE",
+      "name": "Subgroup 1: Commercial Real Estate Loans",
+      "code": "SG_1",
       "categories": [
         {
           "name": "Office Property Loans",
-          "code": "RE-MBS-CRE-OFF",
+          "code": "CAT_OFFICE_PROPERTY_LOANS",
           "asset_type": "loan",
           "assets": [
-            {"symbol": "JPM-MAN-OFFICE", "name": "JPMorgan Chase - Manhattan Commercial Office Loan"},
-            {"symbol": "WFC-SF-OFFICE", "name": "Wells Fargo - Downtown San Francisco CRE Loan"},
-            {"symbol": "GS-NYC-CMBS", "name": "Goldman Sachs - Midtown NYC Office CMBS"},
-            {"symbol": "SAN-MAD-OFFICE", "name": "Santander - Madrid Office Loan Portfolio"},
-            {"symbol": "UBS-ZRH-OFFICE", "name": "UBS - Zurich Commercial Office Loan"}
+            {
+              "symbol": "JPMORGAN_CHASE",
+              "name": "JPMorgan Chase"
+            },
+            {
+              "symbol": "WELLS_FARGO",
+              "name": "Wells Fargo"
+            },
+            {
+              "symbol": "GOLDMAN_SACHS",
+              "name": "Goldman Sachs"
+            },
+            {
+              "symbol": "SANTANDER",
+              "name": "Santander"
+            },
+            {
+              "symbol": "UBS",
+              "name": "UBS"
+            },
+            {
+              "symbol": "BARCLAYS",
+              "name": "Barclays"
+            },
+            {
+              "symbol": "DEUTSCHE_BANK",
+              "name": "Deutsche Bank"
+            },
+            {
+              "symbol": "BANK_OF_CHINA",
+              "name": "Bank of China"
+            },
+            {
+              "symbol": "HSBC",
+              "name": "HSBC"
+            },
+            {
+              "symbol": "ING",
+              "name": "ING"
+            }
           ]
         },
         {
           "name": "Retail Mall Mortgages",
-          "code": "RE-MBS-CRE-RET",
-          "asset_type": "mortgage",
+          "code": "CAT_RETAIL_MALL_MORTGAGES",
+          "asset_type": "loan",
           "assets": [
-            {"symbol": "SPG-MALL-CMBS", "name": "Simon Property Group - Mall CMBS Tranche 2021-A"},
-            {"symbol": "BPY-CAN-MALL", "name": "Brookfield Retail Loan Facility (Canada)"},
-            {"symbol": "URW-PAR-MALL", "name": "Unibail-Rodamco - Paris Mall Securitized Debt"},
-            {"symbol": "GGP-RETAIL-POOL", "name": "General Growth Properties - Retail Mortgage Pool"}
+            {
+              "symbol": "SIMON_PROPERTY_GROUP",
+              "name": "Simon Property Group"
+            },
+            {
+              "symbol": "UNIBAIL_RODAMCO",
+              "name": "Unibail-Rodamco"
+            },
+            {
+              "symbol": "GENERAL_GROWTH_PROPE",
+              "name": "General Growth Properties"
+            },
+            {
+              "symbol": "INTU_PROPERTIES",
+              "name": "Intu Properties"
+            },
+            {
+              "symbol": "WESTFIELD_GROUP",
+              "name": "Westfield Group"
+            },
+            {
+              "symbol": "CBRE_LOAN_SERVICES",
+              "name": "CBRE Loan Services"
+            },
+            {
+              "symbol": "ASCENDAS_REIT",
+              "name": "Ascendas REIT"
+            },
+            {
+              "symbol": "HAMMERSON_PLC",
+              "name": "Hammerson plc"
+            },
+            {
+              "symbol": "KLEPIERRE",
+              "name": "Klepierre"
+            }
           ]
         },
         {
           "name": "Industrial Park Credit Lines",
-          "code": "RE-MBS-CRE-IND",
-          "asset_type": "credit_line",
+          "code": "CAT_INDUSTRIAL_PARK_CREDIT_LINES",
+          "asset_type": "loan",
           "assets": [
-            {"symbol": "PLD", "name": "Prologis - Logistics Park Financing Facility"},
-            {"symbol": "GMG-ASIA-IND", "name": "Goodman Group - Asia Industrial Loan Program"},
-            {"symbol": "GLP-CN-IND", "name": "GLP - China Industrial Warehouse Financing"},
-            {"symbol": "SEGRO-UK-IND", "name": "Segro - UK Industrial Estate Revolver"}
+            {
+              "symbol": "PROLOGIS",
+              "name": "Prologis"
+            },
+            {
+              "symbol": "GOODMAN_GROUP",
+              "name": "Goodman Group"
+            },
+            {
+              "symbol": "GLP",
+              "name": "GLP"
+            },
+            {
+              "symbol": "SEGRO",
+              "name": "Segro"
+            },
+            {
+              "symbol": "DHL_SUPPLY_CHAIN",
+              "name": "DHL Supply Chain"
+            },
+            {
+              "symbol": "AEW_CAPITAL",
+              "name": "AEW Capital"
+            },
+            {
+              "symbol": "MAPLETREE_LOGISTICS",
+              "name": "Mapletree Logistics Trust"
+            },
+            {
+              "symbol": "ID_LOGISTICS",
+              "name": "ID Logistics"
+            },
+            {
+              "symbol": "MONTEA_NV",
+              "name": "Montea NV"
+            }
+          ]
+        },
+        {
+          "name": "Hospitality (Hotel) Development Loans",
+          "code": "CAT_HOSPITALITY_HOTEL_DEVELOPMENT_LOANS",
+          "asset_type": "loan",
+          "assets": [
+            {
+              "symbol": "MARRIOTT_INTL",
+              "name": "Marriott Intl."
+            },
+            {
+              "symbol": "HILTON_WORLDWIDE",
+              "name": "Hilton Worldwide"
+            },
+            {
+              "symbol": "ACCOR_SA",
+              "name": "Accor SA"
+            },
+            {
+              "symbol": "HYATT",
+              "name": "Hyatt"
+            },
+            {
+              "symbol": "MELIA_HOTELS",
+              "name": "Melia Hotels"
+            },
+            {
+              "symbol": "MANDARIN_ORIENTAL",
+              "name": "Mandarin Oriental"
+            },
+            {
+              "symbol": "RITZ_CARLTON",
+              "name": "Ritz-Carlton"
+            },
+            {
+              "symbol": "INTERCONTINENTAL",
+              "name": "InterContinental"
+            },
+            {
+              "symbol": "FAIRMONT_HOTELS",
+              "name": "Fairmont Hotels"
+            },
+            {
+              "symbol": "FOUR_SEASONS",
+              "name": "Four Seasons"
+            }
+          ]
+        },
+        {
+          "name": "Mixed-Use Construction Loans",
+          "code": "CAT_MIXED_USE_CONSTRUCTION_LOANS",
+          "asset_type": "loan",
+          "assets": [
+            {
+              "symbol": "RELATED_COS",
+              "name": "Related Cos"
+            },
+            {
+              "symbol": "CHINA_VANKE",
+              "name": "China Vanke"
+            },
+            {
+              "symbol": "LENDLEASE",
+              "name": "Lendlease"
+            },
+            {
+              "symbol": "TISHMAN_SPEYER",
+              "name": "Tishman Speyer"
+            },
+            {
+              "symbol": "BROOKFIELD",
+              "name": "Brookfield"
+            },
+            {
+              "symbol": "MITSUI_FUDOSAN",
+              "name": "Mitsui Fudosan"
+            },
+            {
+              "symbol": "CAPITALAND",
+              "name": "CapitaLand"
+            },
+            {
+              "symbol": "SKANSKA",
+              "name": "Skanska"
+            },
+            {
+              "symbol": "EMAAR_PROPERTIES",
+              "name": "Emaar Properties"
+            },
+            {
+              "symbol": "HINES_GLOBAL_RE",
+              "name": "Hines Global RE"
+            }
+          ]
+        },
+        {
+          "name": "Urban Redevelopment Financing",
+          "code": "CAT_URBAN_REDEVELOPMENT_FINANCING",
+          "asset_type": "loan",
+          "assets": [
+            {
+              "symbol": "BLACKSTONE",
+              "name": "Blackstone"
+            },
+            {
+              "symbol": "NUVEEN_RE",
+              "name": "Nuveen RE"
+            },
+            {
+              "symbol": "GECINA",
+              "name": "Gecina"
+            },
+            {
+              "symbol": "AXA_IM",
+              "name": "AXA IM"
+            },
+            {
+              "symbol": "ALLIANZ_RE",
+              "name": "Allianz RE"
+            },
+            {
+              "symbol": "GREYSTAR",
+              "name": "Greystar"
+            },
+            {
+              "symbol": "CPPIB",
+              "name": "CPPIB"
+            },
+            {
+              "symbol": "NREP",
+              "name": "NREP"
+            },
+            {
+              "symbol": "HENDERSON_PARK",
+              "name": "Henderson Park"
+            },
+            {
+              "symbol": "QATAR_INVESTMENT_AUT",
+              "name": "Qatar Investment Authority"
+            }
+          ]
+        },
+        {
+          "name": "Warehouse Securitized Debt",
+          "code": "CAT_WAREHOUSE_SECURITIZED_DEBT",
+          "asset_type": "loan",
+          "assets": [
+            {
+              "symbol": "PROLOGIS",
+              "name": "Prologis"
+            },
+            {
+              "symbol": "GLP",
+              "name": "GLP"
+            },
+            {
+              "symbol": "BLACKSTONE",
+              "name": "Blackstone"
+            },
+            {
+              "symbol": "MAPLETREE",
+              "name": "Mapletree"
+            },
+            {
+              "symbol": "DEXUS",
+              "name": "Dexus"
+            },
+            {
+              "symbol": "TRITAX_BIG_BOX",
+              "name": "Tritax Big Box"
+            },
+            {
+              "symbol": "GOODMAN_GROUP",
+              "name": "Goodman Group"
+            },
+            {
+              "symbol": "AEW",
+              "name": "AEW"
+            },
+            {
+              "symbol": "MONTEA_NV",
+              "name": "Montea NV"
+            },
+            {
+              "symbol": "DREAM_INDUSTRIAL_REI",
+              "name": "Dream Industrial REIT"
+            }
+          ]
+        },
+        {
+          "name": "Bridge Loans (Short-Term Commercial)",
+          "code": "CAT_BRIDGE_LOANS_SHORT_TERM_COMMERCIAL_",
+          "asset_type": "loan",
+          "assets": [
+            {
+              "symbol": "LLOYDS_BANK",
+              "name": "Lloyds Bank"
+            },
+            {
+              "symbol": "HSBC",
+              "name": "HSBC"
+            },
+            {
+              "symbol": "MORGAN_STANLEY",
+              "name": "Morgan Stanley"
+            },
+            {
+              "symbol": "MUFG",
+              "name": "MUFG"
+            },
+            {
+              "symbol": "SANTANDER",
+              "name": "Santander"
+            },
+            {
+              "symbol": "CIBC",
+              "name": "CIBC"
+            },
+            {
+              "symbol": "DEUTSCHE_PFANDBRIEFB",
+              "name": "Deutsche Pfandbriefbank"
+            },
+            {
+              "symbol": "WELLS_FARGO",
+              "name": "Wells Fargo"
+            },
+            {
+              "symbol": "BANCO_DO_BRASIL",
+              "name": "Banco do Brasil"
+            }
+          ]
+        },
+        {
+          "name": "Distressed CRE Debt Instruments",
+          "code": "CAT_DISTRESSED_CRE_DEBT_INSTRUMENTS",
+          "asset_type": "loan",
+          "assets": [
+            {
+              "symbol": "BLACKROCK",
+              "name": "BlackRock"
+            },
+            {
+              "symbol": "FORTRESS_INVESTMENT",
+              "name": "Fortress Investment Group"
+            },
+            {
+              "symbol": "DAVIDSON_KEMPNER",
+              "name": "Davidson Kempner"
+            },
+            {
+              "symbol": "OAKTREE_CAPITAL",
+              "name": "Oaktree Capital"
+            },
+            {
+              "symbol": "TPG",
+              "name": "TPG"
+            },
+            {
+              "symbol": "KKR",
+              "name": "KKR"
+            },
+            {
+              "symbol": "VARDE_PARTNERS",
+              "name": "Varde Partners"
+            },
+            {
+              "symbol": "BAIN_CAPITAL",
+              "name": "Bain Capital"
+            }
           ]
         }
       ]
     }
   ]
 }
-

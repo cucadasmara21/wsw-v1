@@ -315,6 +315,105 @@ curl -H "Authorization: Bearer <ADMIN_TOKEN>" \
 
 ---
 
+## Block 8: Real Group 1 Sample from PDFs
+
+### Overview
+
+A reproducible **Group 1 sample** has been extracted directly from two PDF documents:
+- `MASTER_20_Groups_Complete.pdf` — Contains Group 1 heading
+- `Group_1_Subgroup_1_Commercial_Real_Estate_Loans_Assets.pdf` — Contains real CRE asset data
+
+**No data fabrication.** All 85+ assets are extracted via text parsing from PDF tables.
+
+### Sample File
+
+**Location:** `frontend/public/samples/group1.json`
+
+**Structure:**
+- **Group:** Group 1 (Overleveraged Real Estate & MBS-Related Assets)
+- **Subgroups:** 1 (Commercial Real Estate Loans)
+- **Categories:** 9 (Office Loans, Retail Malls, Hospitality, Industrial, etc.)
+- **Assets:** 85+ real CRE financing deals from the PDF
+
+### How to Use in UI
+
+#### Option 1: Load Sample Button (ImportTaxonomyPage)
+
+1. Navigate to **Import Taxonomy** page (menu: 📦 Import Taxonomy)
+2. Click **"Load Sample"** button (if visible)
+3. Verify JSON pre-populates in the input textarea
+4. Preview structure (click **"Preview"** to expand categories/assets)
+5. Click **"Import"** to commit to database (Admin required)
+
+#### Option 2: Manual Import
+
+```bash
+# Copy sample JSON
+cat frontend/public/samples/group1.json
+
+# POST to backend
+curl -X POST http://localhost:8000/api/import/taxonomy \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d @frontend/public/samples/group1.json
+```
+
+### Regenerating the Sample
+
+The sample is reproducible from the source PDFs:
+
+```bash
+cd /workspaces/wsw-v1
+python scripts/extract_group1_from_pdfs.py
+```
+
+This regenerates:
+- `frontend/public/samples/group1.json` — Import payload
+- `frontend/public/samples/group1_source.md` — Provenance notes
+
+**Extraction Heuristics:**
+- PDF text extraction via PyPDF2
+- Group 1 detected by regex: `■ Group 1: ...`
+- Categories detected by regex: `■ Category: ...`
+- Assets parsed from table rows (Name - Ticker - Type - Country - Source)
+
+### Data Quality
+
+✅ **No null values:** All names, codes, symbols present  
+✅ **Real data:** All 85 assets from CRE Loans PDF  
+✅ **Proper structure:** Nested group → subgroups → categories → assets  
+✅ **Idempotent import:** Same JSON twice = no duplication  
+
+### Backend Tests
+
+All import tests pass, including idempotence:
+
+```bash
+python -m pytest tests/test_block7_sample_import.py -v
+
+# Expected output: 11 passed
+```
+
+Test coverage:
+- Sample file exists and is valid JSON
+- Structure is complete (no missing fields)
+- No null names, codes, or symbols
+- Realistic asset counts (50-500)
+- Import creates entities correctly
+- Idempotence: re-importing doesn't duplicate
+
+### Frontend Tests
+
+Sample integration tested in ImportTaxonomyPage tests:
+
+```bash
+cd frontend && npm test -- --run
+
+# Expected output: 42 passed
+```
+
+---
+
 ## Troubleshooting
 
 ### "Unauthorized. Admin access required."
@@ -334,13 +433,19 @@ curl -H "Authorization: Bearer <ADMIN_TOKEN>" \
 - ✅ F5 para refrescar (recarga desde servidor)
 - ✅ Revisar respuesta 200 OK en Network inspector
 
+### Sample JSON not loading in UI
+- ✅ Verificar que `frontend/public/samples/group1.json` existe
+- ✅ Revisar console del navegador (F12) para errores de fetch
+- ✅ Regenerar muestra: `python scripts/extract_group1_from_pdfs.py`
+
 ---
 
 ## Referencias
 
 - Backend Endpoint: [api/import.py](../../api/import_endpoints.py)
 - Frontend Component: [ImportTaxonomyPage.tsx](../../frontend/src/pages/ImportTaxonomyPage.tsx)
+- Extractor Script: [scripts/extract_group1_from_pdfs.py](../../scripts/extract_group1_from_pdfs.py)
 - Tests: 
-  - Backend: [tests/test_import_taxonomy.py](../../tests/test_import_taxonomy.py) *(pending)*
+  - Backend: [tests/test_block7_sample_import.py](../../tests/test_block7_sample_import.py)
   - Frontend: [frontend/src/test/ImportTaxonomyPage.test.tsx](../../frontend/src/test/ImportTaxonomyPage.test.tsx)
 - Models: [models.py](../../models.py)

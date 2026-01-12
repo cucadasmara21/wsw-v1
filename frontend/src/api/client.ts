@@ -9,6 +9,7 @@ import type {
   Asset,
   MarketBars,
   MarketSnapshot,
+  HealthOut,
   RiskOverview,
   RiskSummary,
   User,
@@ -190,4 +191,19 @@ export async function getCategoryAssetsPaginated(
  */
 export async function exportTaxonomy(): Promise<ExportTaxonomyResponse> {
   return typedGet<ExportTaxonomyResponse>(`/export/taxonomy`)
+}
+
+/**
+ * Fetch system health (used by Overview widget)
+ */
+export async function getHealth(): Promise<HealthOut> {
+  // health lives at root, not under /api
+  const base = import.meta.env.VITE_API_URL ?? ''
+  const url = (base.endsWith('/') ? base.slice(0, -1) : base) + '/health'
+  const res = await fetch(url)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`)
+  }
+  return res.json() as Promise<HealthOut>
 }

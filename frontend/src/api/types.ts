@@ -27,6 +27,24 @@ export type MarketRisk = components['schemas']['MarketRisk']
 export type MarketRiskComponents = components['schemas']['MarketRiskComponents']
 export type MarketSnapshot = components['schemas']['MarketSnapshotResponse']
 
+// Health schemas (subset used by Overview widget)
+export type HealthOut = {
+  status: string
+  timestamp: string
+  services: {
+    database: string
+    cache: string
+    neo4j: string
+  }
+  data_quality?: {
+    cached_percent: number
+    stale_percent: number
+    avg_confidence: number
+    provider_errors: number
+    rate_limited: number
+  }
+}
+
 // Metrics schemas
 export type MetricSnapshotOut = {
   id: number

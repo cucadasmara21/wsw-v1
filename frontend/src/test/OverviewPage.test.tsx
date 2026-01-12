@@ -18,6 +18,7 @@ vi.mock('../lib/api', () => ({
 
 vi.mock('../api/client', () => ({
   getLeaderboard: vi.fn(),
+  getHealth: vi.fn(),
 }))
 
 describe('OverviewPage', () => {
@@ -119,6 +120,60 @@ describe('OverviewPage', () => {
       expect(
         screen.getByText(/Leaderboard temporarily unavailable \(provider disabled\/quota\)/i)
       ).toBeInTheDocument()
+    })
+  })
+
+  it('renders Data Quality widget with KPIs', async () => {
+    ;(apiClient.getLeaderboard as any).mockResolvedValue([])
+    ;(apiClient.getHealth as any).mockResolvedValue({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: { database: 'healthy', cache: 'unavailable', neo4j: 'unavailable' },
+      data_quality: {
+        cached_percent: 66.67,
+        stale_percent: 0,
+        avg_confidence: 0.9876,
+        provider_errors: 1,
+        rate_limited: 2,
+      },
+    })
+
+    render(
+      <MemoryRouter>
+        <OverviewPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Data Quality')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Cached')).toBeInTheDocument()
+    expect(screen.getByText(/66\.67%/)).toBeInTheDocument()
+    expect(screen.getByText('Stale')).toBeInTheDocument()
+    expect(screen.getByText(/0\.00%/)).toBeInTheDocument()
+    expect(screen.getByText('Provider errors')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('Rate limited')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
+  it('renders Data Quality unavailable on fetch error', async () => {
+    ;(apiClient.getLeaderboard as any).mockResolvedValue([])
+    ;(apiClient.getHealth as any).mockRejectedValue(new Error('network'))
+
+    render(
+      <MemoryRouter>
+        <OverviewPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Data Quality')).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('unavailable')).toBeInTheDocument()
     })
   })
 })

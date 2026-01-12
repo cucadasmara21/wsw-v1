@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../lib/api'
-import { getLeaderboard, listAlerts } from '../api/client'
-import type { Asset, LeaderboardItem, AlertOut } from '../api/types'
+import { getLeaderboard, listAlerts, getHealth } from '../api/client'
+import type { Asset, LeaderboardItem, AlertOut, HealthOut } from '../api/types'
 
 export function OverviewPage() {
   const navigate = useNavigate()
@@ -23,6 +23,11 @@ export function OverviewPage() {
   const [openAlerts, setOpenAlerts] = useState<any[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
   const [alertsError, setAlertsError] = useState<string | null>(null)
+
+  // Data Quality state
+  const [health, setHealth] = useState<HealthOut | null>(null)
+  const [dqLoading, setDqLoading] = useState<boolean>(false)
+  const [dqError, setDqError] = useState<string | null>(null)
   
   useEffect(() => {
     async function loadData() {
@@ -69,6 +74,23 @@ export function OverviewPage() {
     }
     
     loadLeaderboard()
+  }, [])
+
+  // Load health for Data Quality widget
+  useEffect(() => {
+    async function loadHealth() {
+      setDqLoading(true)
+      setDqError(null)
+      try {
+        const h = await getHealth()
+        setHealth(h)
+      } catch (err: any) {
+        setDqError('unavailable')
+      } finally {
+        setDqLoading(false)
+      }
+    }
+    loadHealth()
   }, [])
   
   // Load open alerts
@@ -258,6 +280,41 @@ export function OverviewPage() {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Data Quality Widget */}
+      <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '2rem' }}>
+        <h2 style={{ marginTop: 0 }}>Data Quality</h2>
+        {dqLoading && (
+          <div style={{ color: '#64748b' }}>Loading data quality...</div>
+        )}
+        {!dqLoading && dqError && (
+          <div style={{ color: '#64748b', fontStyle: 'italic' }}>unavailable</div>
+        )}
+        {!dqLoading && !dqError && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Cached</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{(health?.data_quality?.cached_percent ?? 0).toFixed(2)}%</div>
+            </div>
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Stale</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{(health?.data_quality?.stale_percent ?? 0).toFixed(2)}%</div>
+            </div>
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Avg confidence</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{(health?.data_quality?.avg_confidence ?? 0).toFixed(4)}</div>
+            </div>
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Provider errors</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{health?.data_quality?.provider_errors ?? 0}</div>
+            </div>
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Rate limited</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{health?.data_quality?.rate_limited ?? 0}</div>
+            </div>
           </div>
         )}
       </div>

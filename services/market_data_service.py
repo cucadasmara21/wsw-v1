@@ -1,4 +1,4 @@
-"""Market data service: fetch and cache OHLCV bars."""
+"""Market data service: fetch and cache OHLCV bars, with data quality KPIs."""
 from __future__ import annotations
 
 import logging
@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from models import PriceBar
 from services.cache_service import cache_service
+from services.rate_limiter import rate_limiter
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,68 @@ PERIOD_BY_INTERVAL = {
     "1wk": "2y",
     "1mo": "5y",
 }
+
+
+class MarketKPIs:
+    """Thread-safe counters for data quality KPIs."""
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.total_requests = 0
+        self.cache_hits = 0
+        self.stale_responses = 0
+        self.provider_errors = 0
+        self.rate_limited = 0
+        self.confidence_sum = 0.0
+        self.confidence_count = 0
+        # last request hints
+        self.last_was_cached = False
+        self.last_was_stale = False
+        self.last_source: str | None = None
+
+    def record_request(self, *, cached: bool = False, stale: bool = False, source: str | None = None) -> None:
+        with self._lock:
+            self.total_requests += 1
+            if cached:
+                self.cache_hits += 1
+            if stale:
+                self.stale_responses += 1
+            self.last_was_cached = cached
+            self.last_was_stale = stale
+            self.last_source = source
+
+    def record_provider_error(self) -> None:
+        with self._lock:
+            self.provider_errors += 1
+
+    def record_rate_limited(self) -> None:
+        with self._lock:
+            self.rate_limited += 1
+
+    def add_confidence(self, value: float) -> None:
+        with self._lock:
+            self.confidence_sum += max(0.0, float(value))
+            self.confidence_count += 1
+
+    def get_stats(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "total_requests": self.total_requests,
+                "cache_hits": self.cache_hits,
+                "stale_responses": self.stale_responses,
+                "provider_errors": self.provider_errors,
+                "rate_limited": self.rate_limited,
+                "confidence_sum": self.confidence_sum,
+                "confidence_count": self.confidence_count,
+                "last": {
+                    "cached": self.last_was_cached,
+                    "stale": self.last_was_stale,
+                    "source": self.last_source,
+                },
+            }
+
+
+# Global KPIs instance
+market_kpis = MarketKPIs()
 
 
 def _ensure_datetime(value: Any) -> datetime | None:
@@ -100,17 +164,24 @@ def get_bars(symbol: str, interval: str = "1d", limit: int = 200, use_cache: boo
         raise HTTPException(status_code=422, detail="limit must be positive")
 
     cache_key = f"bars:{symbol}:{interval}:{limit}"
+    cached_hit = False
     if use_cache:
         cached = cache_service.get_json(cache_key)
         if cached:
+            cached_hit = True
+            # record request as cached
+            market_kpis.record_request(cached=True, stale=False, source=(cached[0].get("source") if cached else None))
             return cached[:limit]
 
     try:
         raw_bars = fetch_history(symbol, interval=interval)
     except RuntimeError as exc:
+        # provider unavailable (optional dependency)
+        market_kpis.record_provider_error()
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Unexpected error while fetching history")
+        market_kpis.record_provider_error()
         raise HTTPException(status_code=502, detail="Failed to fetch market data") from exc
 
     normalized = _normalize_bars(raw_bars)
@@ -122,6 +193,8 @@ def get_bars(symbol: str, interval: str = "1d", limit: int = 200, use_cache: boo
 
     trimmed = normalized[-limit:]
     cache_service.set_json(cache_key, trimmed, ttl=CACHE_TTL_SECONDS)
+    # record successful provider request (not cached)
+    market_kpis.record_request(cached=False, stale=False, source=(trimmed[0].get("source") if trimmed else None))
     return trimmed
 
 

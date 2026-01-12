@@ -20,6 +20,7 @@ from database import engine, get_db, init_database, test_connections, neo4j_driv
 from models import Base
 from api import assets, risk, scenarios, auth, market, universe, metrics, alerts, selection, import_endpoints, export_endpoints
 from services.cache_service import cache_service
+from services.market_data_service import market_kpis
 from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
 # Build info
@@ -265,7 +266,7 @@ async def health_check():
 
     overall_status = "healthy" if db_status == "healthy" else "degraded"
 
-    # Data quality KPIs
+    # Data quality KPIs (real counters from market_kpis)
     data_quality = {
         "cached_percent": 0.0,
         "stale_percent": 0.0,
@@ -275,38 +276,18 @@ async def health_check():
     }
 
     try:
-        from services.data_service import DataService
-        from database import SessionLocal
-        from datetime import timedelta
-        
-        db = SessionLocal()
-        try:
-            data_service = DataService(db)
-            
-            # Calculate cache hit rate
-            cache_stats = cache_service.get_stats() if hasattr(cache_service, 'get_stats') else {}
-            if cache_stats.get('total_requests', 0) > 0:
-                data_quality['cached_percent'] = round(
-                    (cache_stats.get('hits', 0) / cache_stats['total_requests']) * 100, 2
-                )
-            
-            # Calculate stale data (prices older than 7 days)
-            total_prices = data_service.count_prices()
-            if total_prices > 0:
-                cutoff = datetime.utcnow() - timedelta(days=7)
-                stale_count = db.execute(
-                    text("SELECT COUNT(*) FROM prices WHERE time < :cutoff"),
-                    {"cutoff": cutoff}
-                ).scalar() or 0
-                data_quality['stale_percent'] = round((stale_count / total_prices) * 100, 2)
-            
-            # Mock avg confidence and error counts (extend with real metrics later)
-            data_quality['avg_confidence'] = 95.5  # Placeholder
-            data_quality['provider_errors'] = 0  # Placeholder
-            data_quality['rate_limited'] = 0  # Placeholder
-            
-        finally:
-            db.close()
+        k = market_kpis.get_stats()
+        total = max(0, int(k.get("total_requests", 0)))
+        hits = max(0, int(k.get("cache_hits", 0)))
+        stale = max(0, int(k.get("stale_responses", 0)))
+        conf_sum = float(k.get("confidence_sum", 0.0))
+        conf_cnt = max(0, int(k.get("confidence_count", 0)))
+
+        data_quality["cached_percent"] = round(((hits / total) * 100) if total > 0 else 0.0, 2)
+        data_quality["stale_percent"] = round(((stale / total) * 100) if total > 0 else 0.0, 2)
+        data_quality["avg_confidence"] = round((conf_sum / conf_cnt) if conf_cnt > 0 else 0.0, 4)
+        data_quality["provider_errors"] = max(0, int(k.get("provider_errors", 0)))
+        data_quality["rate_limited"] = max(0, int(k.get("rate_limited", 0)))
     except Exception as e:
         logger.debug(f"Data quality KPIs calculation skipped: {e}")
 

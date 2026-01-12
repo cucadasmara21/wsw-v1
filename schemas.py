@@ -338,3 +338,39 @@ class AssetDetail(Asset):
     class Config:
         from_attributes = True
 
+
+# Metrics schemas
+class MetricsSnapshot(BaseModel):
+    id: int
+    asset_id: int
+    as_of: datetime
+    metrics: Dict[str, Any]
+    quality: Dict[str, Any]
+    explain: Dict[str, Any]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Alert schemas
+class AlertBase(BaseModel):
+    key: str
+    severity: str
+    message: str
+
+
+class AlertCreate(AlertBase):
+    asset_id: int
+    payload: Optional[Dict[str, Any]] = None
+
+
+class AlertOut(AlertBase):
+    id: int
+    asset_id: int
+    triggered_at: datetime
+    resolved_at: Optional[datetime] = None
+    payload: Dict[str, Any]
+    
+    class Config:
+        from_attributes = True

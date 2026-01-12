@@ -2,25 +2,30 @@ from __future__ import annotations
 
 """
 Universe API - Navegación de ontología
+RBAC-protected endpoints
 """
 from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
-from models import Group, Subgroup, Category
+from models import Group, Subgroup, Category, User
 from schemas import (
     UniverseTreeResponse,
     GroupNode,
     SubgroupNode,
     CategoryNode,
 )
+from services.rbac_service import require_role, ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN
 
 router = APIRouter(tags=["universe"])
 
 
 @router.get("/tree", response_model=UniverseTreeResponse, summary="Get universe tree")
-async def get_universe_tree(db: Session = Depends(get_db)):
+async def get_universe_tree(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role([ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN]))
+):
     """
     Return complete ontology tree: Groups → Subgroups → Categories
     

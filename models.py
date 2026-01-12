@@ -35,6 +35,8 @@ class Asset(Base):
     risk_metrics = relationship("RiskMetric", back_populates="asset", cascade="all, delete-orphan")
     # Compatibility: keep risk_snapshots relationship expected by other modules
     risk_snapshots = relationship("RiskSnapshot", back_populates="asset", cascade="all, delete-orphan")
+    metric_snapshots = relationship("AssetMetricSnapshot", back_populates="asset", cascade="all, delete-orphan")
+    alerts = relationship("Alert", back_populates="asset", cascade="all, delete-orphan")
 
     def to_dict(self):
         """Convertir a diccionario para serialización"""
@@ -82,23 +84,6 @@ class RiskMetric(Base):
     metadata_ = Column('metadata', JSON, default=dict)
 
     asset = relationship("Asset", back_populates="risk_metrics")
-
-
-class Alert(Base):
-    """Modelo para alertas generadas"""
-    __tablename__ = "alerts"
-
-    id = Column(Integer, primary_key=True, index=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"))
-    alert_type = Column(String(50))
-    severity = Column(String(20))
-    description = Column(String(500))
-    triggered_at = Column(DateTime(timezone=True), server_default=func.now())
-    resolved_at = Column(DateTime(timezone=True))
-    is_resolved = Column(Boolean, default=False)
-    metadata_ = Column('metadata', JSON, default=dict)
-
-    asset = relationship("Asset")
 
 
 class User(Base):
@@ -232,4 +217,53 @@ class IndicatorSnapshot(Base):
 
     __table_args__ = (
         Index("ix_indicator_snapshot_symbol_tf_ts", "symbol", "timeframe", "ts", unique=True),
+    )
+
+class AssetMetricSnapshot(Base):
+    """Snapshots de métricas calculadas por activo"""
+    __tablename__ = "asset_metric_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True, nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    
+    # Metrics payload (all metrics computed for this asset)
+    metrics: Mapped[dict] = mapped_column(JSON, nullable=False)
+    
+    # Quality indicators
+    quality: Mapped[dict] = mapped_column(JSON, default=dict)
+    
+    # Explanation/breakdown
+    explain: Mapped[dict] = mapped_column(JSON, default=dict)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    asset: Mapped["Asset"] = relationship(back_populates="metric_snapshots")
+
+    __table_args__ = (
+        Index("ix_metric_snapshot_asset_as_of", "asset_id", "as_of", unique=True),
+    )
+
+
+class Alert(Base):
+    """Alertas generadas basadas en métricas"""
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True, nullable=False)
+    
+    key: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "rsi_high", "drawdown_alert"
+    severity: Mapped[str] = mapped_column(String(20), default="warning")  # info, warning, critical
+    message: Mapped[str] = mapped_column(String(500))
+    
+    triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)  # Context data
+
+    asset: Mapped["Asset"] = relationship(back_populates="alerts")
+
+    __table_args__ = (
+        Index("ix_alerts_asset_triggered", "asset_id", "triggered_at"),
+        Index("ix_alerts_severity", "severity"),
     )

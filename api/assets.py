@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """
 Endpoints para gestión de activos con ontología
+RBAC-protected endpoints
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,8 +10,9 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 
 from database import get_db
-from models import Asset, Category, Subgroup, Group
+from models import Asset, Category, Subgroup, Group, User
 from schemas import Asset as AssetSchema, AssetCreate, AssetUpdate, AssetDetail
+from services.rbac_service import require_role, has_role_or_higher, ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN
 
 router = APIRouter(tags=["assets"])
 
@@ -24,7 +26,8 @@ async def get_assets(
     subgroup_id: Optional[int] = Query(None, description="Filter by subgroup ID"),
     category_id: Optional[int] = Query(None, description="Filter by category ID"),
     q: Optional[str] = Query(None, description="Search by symbol or name"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role([ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN]))
 ):
     """
     List assets with ontology filters and search.
@@ -65,7 +68,11 @@ async def get_assets(
 
 
 @router.get("/{asset_id}", response_model=AssetDetail, summary="Get asset detail")
-async def get_asset(asset_id: int, db: Session = Depends(get_db)):
+async def get_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role([ROLE_VIEWER, ROLE_ANALYST, ROLE_ADMIN]))
+):
     """
     Get detailed asset information including category hierarchy.
     """
@@ -111,7 +118,11 @@ async def get_asset(asset_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=AssetSchema, status_code=201)
-async def create_asset(asset_data: AssetCreate, db: Session = Depends(get_db)):
+async def create_asset(
+    asset_data: AssetCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role([ROLE_ADMIN]))
+):
     """Create new asset"""
     existing = db.query(Asset).filter(Asset.symbol == asset_data.symbol).first()
     if existing:

@@ -14,7 +14,7 @@
 ### Frontend  
 - **Build**: ✓ 42 modules, 176KB gzip ✅
 - **Tests**: 14/15 passing (1 async timing issue, non-blocking) ✅
-- **Pages**: Overview, Universe (with tree nav), Asset Detail
+- **Pages**: Overview, Universe (with tree nav), Asset Detail, Metrics, Alerts
 - **Routing**: react-router-dom with Layout + sidebar
 
 ---
@@ -69,6 +69,8 @@ npm run dev -- --host 0.0.0.0 --port 5173
 - **Overview**: `/` - Stats cards + recent assets
 - **Universe**: `/universe` - Tree navigation (click categories to filter assets)
 - **Asset Detail**: Click any asset symbol → Shows hierarchy + market data (if yfinance installed)
+- **Metrics**: `/metrics` - Select asset, view metrics, recompute
+- **Alerts**: `/alerts` - Table of alerts, filter & resolve
 - **Health**: `/health` - System health check
 
 ---
@@ -79,7 +81,7 @@ npm run dev -- --host 0.0.0.0 --port 5173
 ```bash
 cd /workspaces/wsw-v1
 python -m pytest -v
-# Expected: 18 passed (including 6 new universe tests)
+# Expected: All tests green (health, universe, metrics, alerts)
 ```
 
 ### Frontend Tests
@@ -130,6 +132,22 @@ Then refresh Asset Detail page → Market snapshot will load instead of "Coming 
 
 ---
 
+## 🕒 Optional: Background Scheduler
+
+Enable periodic recomputation of metrics and alerts:
+
+```env
+ENABLE_SCHEDULER=true
+SCHEDULER_INTERVAL_MINUTES=5
+SCHEDULER_BATCH_SIZE=50
+```
+
+- Starts automatically on backend startup when enabled.
+- Runs every `SCHEDULER_INTERVAL_MINUTES`, processing up to `SCHEDULER_BATCH_SIZE` active assets.
+- Structured logs include a `job-XXXXXXX` id for traceability.
+
+---
+
 ## 📝 Known Issues & Next Steps
 
 ### Non-blocking
@@ -146,6 +164,13 @@ Then refresh Asset Detail page → Market snapshot will load instead of "Coming 
 ---
 
 ## 🐛 Troubleshooting
+### 429 Too Many Requests (UI)
+- Cause: Backend rate limits or batch operations.
+- Fix: Wait a minute and retry; reduce batch size (`SCHEDULER_BATCH_SIZE`).
+
+### 503 Service Unavailable (UI)
+- Cause: Optional services (Redis/Neo4j) disabled or data not ingested yet.
+- Fix: Install optional deps (`requirements-optional.txt`) or run `python ingest.py` to load sample price data.
 
 ### Backend port 8000 already in use
 ```bash

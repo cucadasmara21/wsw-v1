@@ -38,7 +38,7 @@ describe('AlertsPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/RSI14 is high/)).toBeInTheDocument()
-      expect(screen.getByText(/AAPL/)).toBeInTheDocument()
+      expect(screen.getAllByText(/AAPL/).length).toBeGreaterThan(0)
     })
   })
 
@@ -50,7 +50,7 @@ describe('AlertsPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Status/)).toBeInTheDocument()
       expect(screen.getByText(/Severity/)).toBeInTheDocument()
-      expect(screen.getByText(/Asset/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Asset/).length).toBeGreaterThan(0)
     })
   })
 

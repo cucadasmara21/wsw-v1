@@ -6,8 +6,12 @@ import { OverviewPage } from '../pages/OverviewPage'
 // Mock API calls
 vi.mock('../lib/api', () => ({
   apiClient: {
-    get: vi.fn().mockResolvedValue([])
-  }
+    get: vi.fn((path?: string) =>
+      path && path.includes('/universe/tree')
+        ? Promise.resolve({ groups: [] })
+        : Promise.resolve([])
+    ),
+  },
 }))
 
 describe('OverviewPage', () => {

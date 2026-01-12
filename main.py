@@ -4,6 +4,7 @@ NOTA: No ejecuta seed automáticamente.
 Usar: python tools/seed_admin.py
 """
 import logging
+import asyncio
 import uuid
 import subprocess
 from datetime import datetime
@@ -19,6 +20,7 @@ from database import engine, get_db, init_database, test_connections, neo4j_driv
 from models import Base
 from api import assets, risk, scenarios, auth, market, universe, metrics, alerts
 from services.cache_service import cache_service
+from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
 # Build info
 def _get_git_sha() -> str:
@@ -83,6 +85,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️  Error cache: {e}")
 
+    # Optional scheduler startup
+    try:
+        if settings.ENABLE_SCHEDULER:
+            app.state.scheduler_task = create_scheduler_task(
+                settings.SCHEDULER_INTERVAL_MINUTES,
+                settings.SCHEDULER_BATCH_SIZE,
+            )
+            logger.info(
+                f"🕒 Scheduler iniciado cada {settings.SCHEDULER_INTERVAL_MINUTES}m (batch={settings.SCHEDULER_BATCH_SIZE})"
+            )
+        else:
+            app.state.scheduler_task = None
+    except Exception as e:
+        logger.warning(f"⚠️  Error iniciando scheduler: {e}")
+
     yield
 
     logger.info("🛑 Apagando WallStreetWar API...")
@@ -90,6 +107,22 @@ async def lifespan(app: FastAPI):
         cache_service.close()
     except:
         pass
+
+    # Optional scheduler shutdown
+    try:
+        task = getattr(app.state, "scheduler_task", None)
+        if task:
+            cancel_scheduler_task(task)
+            # Give the task a brief moment to cancel
+            try:
+                asyncio.get_running_loop()
+                # In async context, we cannot block; rely on cancellation
+            except RuntimeError:
+                # No running loop (e.g., during uvicorn shutdown), best effort
+                pass
+            logger.info("🕒 Scheduler detenido")
+    except Exception as e:
+        logger.debug(f"Scheduler shutdown note: {e}")
 
 
 from fastapi.responses import JSONResponse
@@ -302,6 +335,11 @@ async def get_config():
         },
         "neo4j": {
             "enabled": settings.ENABLE_NEO4J
+        },
+        "scheduler": {
+            "enabled": settings.ENABLE_SCHEDULER,
+            "interval_minutes": settings.SCHEDULER_INTERVAL_MINUTES,
+            "batch_size": settings.SCHEDULER_BATCH_SIZE,
         },
         "api": {
             "host": settings.API_HOST,

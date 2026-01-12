@@ -8,8 +8,12 @@ import App from '../App'
 // Mock API calls
 vi.mock('../lib/api', () => ({
   apiClient: {
-    get: vi.fn().mockResolvedValue([])
-  }
+    get: vi.fn((path?: string) =>
+      path && typeof path === 'string' && path.includes('/universe/tree')
+        ? Promise.resolve({ groups: [] })
+        : Promise.resolve([])
+    ),
+  },
 }))
 
 describe('App', () => {
@@ -21,8 +25,8 @@ describe('App', () => {
   it('renders navigation links', () => {
     render(<App />)
     // Check sidebar navigation
-    expect(screen.getByText(/Overview/i)).toBeInTheDocument()
-    expect(screen.getByText(/Universe/i)).toBeInTheDocument()
-    expect(screen.getByText(/Health/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Overview/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Universe/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Health/i })).toBeInTheDocument()
   })
 })

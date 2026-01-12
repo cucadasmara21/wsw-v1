@@ -353,6 +353,26 @@ class MetricsSnapshot(BaseModel):
         from_attributes = True
 
 
+class MetricSnapshotOut(BaseModel):
+    id: int
+    asset_id: int
+    as_of: datetime
+    metrics: Dict[str, Any]
+    score: float
+    explain: Dict[str, Any]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class LeaderboardItem(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str | None = None
+    score: float
+
+
 # Alert schemas
 class AlertBase(BaseModel):
     key: str

@@ -109,6 +109,8 @@ Respuesta esperada:
 - `/api/risk/overview` - Visión general de riesgo
 - `/api/scenarios/run` - Ejecutar escenarios
 - `/api/auth/token` - Autenticación JWT
+- `/api/metrics/{asset_id}/metrics` - Último snapshot de métricas
+- `/api/alerts` - Listado y gestión de alertas
 
 ---
 
@@ -306,6 +308,9 @@ DATABASE_URL=sqlite:///./wsw.db
 ENABLE_TIMESCALE=false
 SECRET_KEY=your-secret-key-change-in-production
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8000
+ENABLE_SCHEDULER=false
+SCHEDULER_INTERVAL_MINUTES=5
+SCHEDULER_BATCH_SIZE=50
 ```
 
 ### Para PostgreSQL + TimescaleDB
@@ -327,6 +332,16 @@ REDIS_URL=redis://localhost:6379/0
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
+
+### Para habilitar el Scheduler (opcional)
+
+```env
+ENABLE_SCHEDULER=true
+SCHEDULER_INTERVAL_MINUTES=5
+SCHEDULER_BATCH_SIZE=50
+```
+
+Con esto, el backend ejecutará cada N minutos la recomputación de métricas y generación de alertas para un subconjunto de activos.
 ```
 
 ---
@@ -344,6 +359,13 @@ curl http://localhost:8000/api/assets
 
 # 3. Ver configuración
 curl http://localhost:8000/api/config
+
+# 5. Ver métricas y alertas (requiere auth en producción)
+# GET snapshot de métricas (id de activo de ejemplo: 1)
+curl http://localhost:8000/api/metrics/1/metrics
+
+# GET alertas
+curl http://localhost:8000/api/alerts
 
 # 4. Ver documentación interactiva
 # Abrir en navegador: http://localhost:8000/docs

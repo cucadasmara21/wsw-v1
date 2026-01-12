@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = Field(default="admin@wsw.local", env="ADMIN_EMAIL")
     ADMIN_PASSWORD: str = Field(default="admin123456", env="ADMIN_PASSWORD")
 
+    # ==================== SCHEDULER (OPCIONAL) ====================
+    ENABLE_SCHEDULER: bool = Field(default=False, env="ENABLE_SCHEDULER")
+    SCHEDULER_INTERVAL_MINUTES: int = Field(default=5, env="SCHEDULER_INTERVAL_MINUTES")
+    SCHEDULER_BATCH_SIZE: int = Field(default=50, env="SCHEDULER_BATCH_SIZE")
+
     # ==================== BANDERAS DERIVADAS ====================
     ENABLE_REDIS: bool = False
     ENABLE_NEO4J: bool = False
@@ -118,3 +123,4 @@ logger.info(f"🗄️  DB:  {settings.DATABASE_URL[: 50]}...")
 logger.info(f"🔴 Redis: {'✅' if settings.ENABLE_REDIS else '❌'}")
 logger.info(f"🔵 Neo4j: {'✅' if settings.ENABLE_NEO4J else '❌'}")
 logger.info(f"⏱️  TimescaleDB: {'✅' if settings.ENABLE_TIMESCALE and not settings.USE_SQLITE else '❌'}")
+logger.info(f"🕒 Scheduler: {'✅' if settings.ENABLE_SCHEDULER else '❌'} (interval={settings.SCHEDULER_INTERVAL_MINUTES}m, batch={settings.SCHEDULER_BATCH_SIZE})")

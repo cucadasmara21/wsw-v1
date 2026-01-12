@@ -220,7 +220,7 @@ class IndicatorSnapshot(Base):
     )
 
 class AssetMetricSnapshot(Base):
-    """Snapshots de métricas calculadas por activo"""
+    """Snapshots de métricas calculadas por activo (legacy)"""
     __tablename__ = "asset_metric_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -242,6 +242,25 @@ class AssetMetricSnapshot(Base):
 
     __table_args__ = (
         Index("ix_metric_snapshot_asset_as_of", "asset_id", "as_of", unique=True),
+    )
+
+
+class MetricSnapshot(Base):
+    """Metric snapshots con score y explain"""
+    __tablename__ = "metric_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True, nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+
+    metrics: Mapped[dict] = mapped_column(JSON, nullable=False)
+    score: Mapped[float] = mapped_column(Float, index=True)
+    explain: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_metric_snapshots_asset_as_of", "asset_id", "as_of", unique=True),
     )
 
 

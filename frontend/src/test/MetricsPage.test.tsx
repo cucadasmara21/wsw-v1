@@ -107,11 +107,20 @@ describe('MetricsPage', () => {
   })
 
   it('should display error message on 403', async () => {
-    ;(client.typedGet as any).mockRejectedValue(
-      new Error('403 Forbidden: Access denied')
-    )
+    ;(client.typedGet as any).mockImplementation((path: string) => {
+      if (path === '/assets') {
+        return Promise.resolve([{ id: 1, symbol: 'AAPL', name: 'Apple Inc.' }])
+      }
+      if (path.includes('/metrics/1/metrics')) {
+        return Promise.reject(new Error('403 Forbidden: Access denied'))
+      }
+    })
 
     render(<MetricsPage />)
+
+    // Select asset to trigger metrics load
+    const select = await waitFor(() => screen.getByRole('combobox'))
+    fireEvent.change(select, { target: { value: '1' } })
 
     await waitFor(() => {
       expect(screen.getByText(/access denied/i)).toBeInTheDocument()

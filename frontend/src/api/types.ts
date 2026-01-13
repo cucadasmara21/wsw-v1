@@ -68,3 +68,55 @@ export type AlertOut = {
 // Validation schemas
 export type ValidationError = components['schemas']['ValidationError']
 export type HTTPValidationError = components['schemas']['HTTPValidationError']
+// ============================================================================
+// Risk Engine v1 schemas (Block 10)
+// ============================================================================
+
+export type RiskVector = {
+  volatility: number
+  max_drawdown: number
+  momentum_30d: number
+  liquidity: number
+  centrality: number
+  insufficient_data: boolean
+}
+
+export type RiskItem = {
+  rank?: number
+  asset_id: number
+  symbol: string
+  name: string
+  cri: number | null
+  risk_vector: RiskVector
+  data_meta?: {
+    cached?: boolean
+    stale?: boolean
+    confidence?: number
+    source?: string
+    insufficient_data?: boolean
+  }
+}
+
+export type RiskTopResponse = RiskItem[]
+
+export type RiskDetailResponse = {
+  asset_id: number
+  symbol: string
+  name: string
+  cri: number | null
+  risk_vector: RiskVector
+  data_meta?: {
+    cached?: boolean
+    stale?: boolean
+    confidence?: number
+    source?: string
+    insufficient_data?: boolean
+  }
+}
+
+export type RiskRecomputeResponse = {
+  status: string
+  computed_count: number
+  assets_with_data: number
+  assets_insufficient: number
+}

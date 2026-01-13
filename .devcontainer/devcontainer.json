@@ -7,6 +7,16 @@
     }
   },
   "forwardPorts": [8000, 5173],
+  "portsAttributes": {
+    "8000": {
+      "label": "Backend API",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Frontend Dev",
+      "onAutoForward": "notify"
+    }
+  },
   "postCreateCommand": "bash -lc \"python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt && python init_db.py && npm install --prefix frontend\"",
   "customizations": {
     "vscode": {

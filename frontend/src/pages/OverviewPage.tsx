@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../lib/api'
-import { getLeaderboard, listAlerts } from '../api/client'
-import type { Asset, LeaderboardItem, AlertOut } from '../api/types'
+import { getLeaderboard, listAlerts, getRiskTop } from '../api/client'
+import type { Asset, LeaderboardItem, AlertOut, RiskItem } from '../api/types'
 
 export function OverviewPage() {
   const navigate = useNavigate()
@@ -23,6 +23,11 @@ export function OverviewPage() {
   const [openAlerts, setOpenAlerts] = useState<any[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
   const [alertsError, setAlertsError] = useState<string | null>(null)
+  
+  // Risk state
+  const [riskAssets, setRiskAssets] = useState<RiskItem[]>([])
+  const [riskLoading, setRiskLoading] = useState(false)
+  const [riskError, setRiskError] = useState<string | null>(null)
   
   useEffect(() => {
     async function loadData() {
@@ -95,6 +100,29 @@ export function OverviewPage() {
     loadAlerts()
   }, [])
   
+  // Load risk data
+  useEffect(() => {
+    async function loadRisk() {
+      setRiskLoading(true)
+      setRiskError(null)
+      try {
+        const data = await getRiskTop({ scope: 'universe', limit: 10, lookback_days: 90 })
+        setRiskAssets(data.items)
+      } catch (err: any) {
+        const errorMsg = err.message || String(err)
+        if (errorMsg.includes('404')) {
+          setRiskError('No risk data available. Add price data first.')
+        } else {
+          setRiskError('Failed to load risk data.')
+        }
+      } finally {
+        setRiskLoading(false)
+      }
+    }
+    
+    loadRisk()
+  }, [])
+  
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Overview</h1>
@@ -135,7 +163,81 @@ export function OverviewPage() {
       
       {/* Top Risk Assets Widget */}
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '2rem' }}>
-        <h2 style={{ marginTop: 0 }}>Top Risk Assets</h2>
+        <h2 style={{ marginTop: 0 }}>Top Risk Assets (CRI 90-day)</h2>
+        
+        {riskError && (
+          <div style={{ padding: '1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '6px' }}>
+            {riskError}
+          </div>
+        )}
+        
+        {riskLoading && !riskError && (
+          <div style={{ color: '#64748b' }}>Loading risk data...</div>
+        )}
+        
+        {!riskLoading && !riskError && riskAssets.length === 0 && (
+          <div style={{ color: '#64748b', fontStyle: 'italic' }}>No risk data available yet.</div>
+        )}
+        
+        {!riskLoading && !riskError && riskAssets.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ textAlign: 'left', padding: '0.75rem', width: '60px' }}>Rank</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem' }}>Symbol</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem' }}>Name</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem', width: '100px' }}>CRI</th>
+                <th style={{ textAlign: 'left', padding: '0.75rem' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {riskAssets.map((item) => (
+                <tr 
+                  key={item.asset_id} 
+                  style={{ 
+                    borderBottom: '1px solid #e2e8f0',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s'
+                  }}
+                  onClick={() => navigate(`/assets/${item.asset_id}`)}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <td style={{ padding: '0.75rem', fontWeight: '500', color: '#64748b' }}>#{item.rank}</td>
+                  <td style={{ padding: '0.75rem', fontWeight: '500' }}>{item.symbol}</td>
+                  <td style={{ padding: '0.75rem' }}>{item.name || 'N/A'}</td>
+                  <td style={{ padding: '0.75rem' }}>
+                    <span style={{ 
+                      padding: '0.25rem 0.5rem', 
+                      background: item.cri !== null && item.cri >= 70 ? '#fee2e2' : item.cri !== null && item.cri >= 40 ? '#fef3c7' : '#d1fae5',
+                      color: item.cri !== null && item.cri >= 70 ? '#991b1b' : item.cri !== null && item.cri >= 40 ? '#92400e' : '#065f46',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem',
+                      fontWeight: '600'
+                    }}>
+                      {item.cri !== null ? item.cri.toFixed(1) : 'N/A'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      {item.data_meta?.cached && (
+                        <span style={{ padding: '0.25rem 0.5rem', background: '#d1fae5', color: '#065f46', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Cached</span>
+                      )}
+                      {item.data_meta?.stale && (
+                        <span style={{ padding: '0.25rem 0.5rem', background: '#fef3c7', color: '#92400e', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Stale</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Leaderboard Widget */}
+      <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '2rem' }}>
+        <h2 style={{ marginTop: 0 }}>Leaderboard (Top Scores)</h2>
         
         {leaderboardError && (
           <div style={{ padding: '1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '6px' }}>

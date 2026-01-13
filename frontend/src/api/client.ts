@@ -16,6 +16,11 @@ import type {
   MetricSnapshotOut,
   LeaderboardItem,
   AlertOut,
+  RiskItem,
+  RiskVector,
+  RiskTopResponse,
+  RiskDetailResponse,
+  RiskRecomputeResponse,
 } from './types'
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -93,6 +98,11 @@ export type {
   MetricSnapshotOut,
   LeaderboardItem,
   AlertOut,
+  RiskItem,
+  RiskVector,
+  RiskTopResponse,
+  RiskDetailResponse,
+  RiskRecomputeResponse,
 }
 
 /**
@@ -148,4 +158,46 @@ export async function resolveAlert(alertId: number): Promise<any> {
  */
 export async function recomputeAlerts(): Promise<{ status: string }> {
   return typedPost<{}, { status: string }>(`/alerts/recompute`, {})
+}
+// ============================================================================
+// Risk Engine v1 API (Block 10)
+// ============================================================================
+
+import type {
+  RiskTopResponse,
+  RiskDetailResponse,
+  RiskRecomputeResponse,
+} from './types'
+
+/**
+ * Get top risk assets by CRI
+ */
+export async function getRiskTop(params?: {
+  scope?: 'universe' | 'selection'
+  limit?: number
+  lookback_days?: number
+}): Promise<RiskTopResponse> {
+  const query = new URLSearchParams()
+  if (params?.scope) query.set('scope', params.scope)
+  if (params?.limit) query.set('limit', params.limit.toString())
+  if (params?.lookback_days) query.set('lookback_days', params.lookback_days.toString())
+  const queryStr = query.toString() ? `?${query.toString()}` : ''
+  return typedGet<RiskTopResponse>(`/risk/top${queryStr}`)
+}
+
+/**
+ * Get risk details for a specific asset
+ */
+export async function getRiskAsset(
+  assetId: number,
+  lookback_days: number = 90
+): Promise<RiskDetailResponse> {
+  return typedGet<RiskDetailResponse>(`/risk/assets/${assetId}?lookback_days=${lookback_days}`)
+}
+
+/**
+ * Recompute risk for all assets (admin only)
+ */
+export async function recomputeRisk(limit: number = 100): Promise<RiskRecomputeResponse> {
+  return typedPost<{}, RiskRecomputeResponse>(`/risk/recompute?limit=${limit}`, {})
 }

@@ -63,7 +63,7 @@ describe('OverviewPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Top Risk Assets')).toBeInTheDocument()
+      expect(screen.getByText(/Top Risk Assets/)).toBeInTheDocument()
     })
 
     await waitFor(() => {

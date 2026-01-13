@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '../lib/api'
-import { getLatestMetrics, recomputeMetrics } from '../api/client'
-import type { AssetDetail, MarketSnapshot, MetricSnapshotOut } from '../api/types'
+import { getLatestMetrics, recomputeMetrics, getRiskAsset } from '../api/client'
+import type { AssetDetail, MarketSnapshot, MetricSnapshotOut, RiskDetailResponse } from '../api/types'
 
 export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +18,11 @@ export function AssetDetailPage() {
   const [metricsError, setMetricsError] = useState<string | null>(null)
   const [recomputeLoading, setRecomputeLoading] = useState(false)
   const [recomputeMessage, setRecomputeMessage] = useState<string | null>(null)
+  
+  // Risk state
+  const [riskData, setRiskData] = useState<RiskDetailResponse | null>(null)
+  const [riskLoading, setRiskLoading] = useState(false)
+  const [riskError, setRiskError] = useState<string | null>(null)
   
   useEffect(() => {
     async function loadAsset() {
@@ -73,6 +78,32 @@ export function AssetDetailPage() {
     
     if (id) {
       loadMetrics()
+    }
+  }, [id])
+  
+  // Load risk data
+  useEffect(() => {
+    async function loadRisk() {
+      if (!id) return
+      setRiskLoading(true)
+      setRiskError(null)
+      try {
+        const data = await getRiskAsset(Number(id), 90)
+        setRiskData(data)
+      } catch (err: any) {
+        const errorMsg = err.message || String(err)
+        if (errorMsg.includes('404')) {
+          setRiskError('No price data available for risk calculation')
+        } else {
+          setRiskError('Failed to load risk data')
+        }
+      } finally {
+        setRiskLoading(false)
+      }
+    }
+    
+    if (id) {
+      loadRisk()
     }
   }, [id])
   
@@ -196,6 +227,105 @@ export function AssetDetailPage() {
           </div>
         ) : (
           <div style={{ color: '#64748b' }}>Loading market data...</div>
+        )}
+      </div>
+      
+      {/* Risk Panel */}
+      <div style={{ background: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+        <h2 style={{ marginTop: 0 }}>Risk Assessment (90-day)</h2>
+        
+        {riskLoading && (
+          <div style={{ color: '#64748b' }}>Loading risk data...</div>
+        )}
+        
+        {riskError && (
+          <div style={{ padding: '1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '6px' }}>
+            {riskError}
+          </div>
+        )}
+        
+        {riskData && !riskLoading && !riskError && (
+          <div>
+            {/* CRI Badge */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ 
+                display: 'inline-block',
+                padding: '0.75rem 1.5rem',
+                background: riskData.cri !== null && riskData.cri >= 70 ? '#dc2626' : riskData.cri !== null && riskData.cri >= 40 ? '#f59e0b' : '#16a34a',
+                color: 'white',
+                borderRadius: '8px',
+                fontSize: '1.5rem',
+                fontWeight: 'bold'
+              }}>
+                CRI: {riskData.cri !== null ? riskData.cri.toFixed(1) : 'N/A'}
+              </div>
+              
+              {riskData.data_meta && (
+                <div style={{ display: 'inline-flex', gap: '0.5rem', marginLeft: '1rem', verticalAlign: 'middle' }}>
+                  {riskData.data_meta.cached && (
+                    <span style={{ padding: '0.25rem 0.5rem', background: '#d1fae5', color: '#065f46', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Cached</span>
+                  )}
+                  {riskData.data_meta.stale && (
+                    <span style={{ padding: '0.25rem 0.5rem', background: '#fef3c7', color: '#92400e', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Stale</span>
+                  )}
+                  {riskData.data_meta.confidence !== undefined && (
+                    <span style={{ padding: '0.25rem 0.5rem', background: '#dbeafe', color: '#1e40af', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>
+                      {(riskData.data_meta.confidence * 100).toFixed(0)}% conf
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {riskData.risk_vector.insufficient_data && (
+              <div style={{ padding: '0.75rem', marginBottom: '1rem', background: '#fef3c7', color: '#92400e', borderRadius: '6px', fontSize: '0.875rem' }}>
+                ⚠️ Insufficient data for reliable risk assessment
+              </div>
+            )}
+            
+            {/* Risk Vector Components */}
+            {!riskData.risk_vector.insufficient_data && (
+              <div>
+                <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Risk Vector Components</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+                  <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Volatility (30d)</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: riskData.risk_vector.volatility > 0.7 ? '#dc2626' : '#475569' }}>
+                      {(riskData.risk_vector.volatility * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  
+                  <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Max Drawdown</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: riskData.risk_vector.max_drawdown > 0.5 ? '#dc2626' : '#475569' }}>
+                      {(riskData.risk_vector.max_drawdown * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  
+                  <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Momentum (30d)</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: riskData.risk_vector.momentum_30d > 0.6 ? '#dc2626' : '#059669' }}>
+                      {(riskData.risk_vector.momentum_30d * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  
+                  <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Liquidity</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: riskData.risk_vector.liquidity < 0.3 ? '#dc2626' : '#059669' }}>
+                      {(riskData.risk_vector.liquidity * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  
+                  <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Centrality</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                      {(riskData.risk_vector.centrality * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
       

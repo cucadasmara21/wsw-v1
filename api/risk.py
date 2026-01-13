@@ -11,11 +11,217 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from database import get_db, engine
-from models import Asset, RiskMetric
+from models import Asset, RiskMetric, Price
 from schemas import RiskOverviewResponse, RiskSnapshotOut, RiskSeriesPointOut, RiskSummaryResponse, TopAsset
+from services.risk_service import compute_risk_vector, compute_cri
+from services.rbac_service import require_role
+from schemas import User
 
 router = APIRouter(tags=["risk"])
 
+
+# ============================================================================
+# BLOCK 10: Risk Engine v1 Endpoints (Real-time CRI computation)
+# ============================================================================
+
+@router.get("/top")
+def get_risk_top(
+    limit: int = Query(10, ge=1, le=100),
+    lookback_days: int = Query(90, ge=1, le=365),
+    scope: str = Query("universe", regex="^(universe|selection)$"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get top risk assets by CRI (real-time computation).
+    
+    - scope=universe: all active assets
+    - scope=selection: selected assets (placeholder; same as universe for now)
+    - Returns: sorted by CRI descending
+    """
+    
+    # Query active assets
+    assets = db.query(Asset).filter(Asset.active == True).all()
+    
+    if not assets:
+        return []
+    
+    # Compute risk for each
+    risk_data = []
+    for asset in assets:
+        # Fetch recent prices
+        prices_query = (
+            db.query(Price)
+            .filter(Price.asset_id == asset.id)
+            .order_by(Price.time.desc())
+            .limit(lookback_days)
+            .all()
+        )
+        
+        if not prices_query or len(prices_query) < 2:
+            continue  # Skip assets with insufficient data
+        
+        # Sort chronologically (oldest first)
+        prices_query.reverse()
+        
+        prices = [float(p.close) for p in prices_query]
+        volumes = [float(p.volume) if p.volume else 0.0 for p in prices_query]
+        
+        # Compute risk
+        risk_vector = compute_risk_vector(prices, volumes, lookback_days)
+        cri = compute_cri(risk_vector)
+        
+        if cri is not None:
+            # Aggregate data_meta from latest price
+            data_meta = {}
+            if prices_query:
+                latest = prices_query[-1]
+                if hasattr(latest, "data_meta") and latest.data_meta:
+                    data_meta = latest.data_meta.copy() if isinstance(latest.data_meta, dict) else {}
+            
+            data_meta["insufficient_data"] = risk_vector.get("insufficient_data", False)
+            
+            risk_data.append({
+                "asset_id": asset.id,
+                "symbol": asset.symbol,
+                "name": asset.name or "N/A",
+                "cri": cri,
+                "risk_vector": risk_vector,
+                "data_meta": data_meta,
+            })
+    
+    # Sort by CRI descending
+    risk_data.sort(key=lambda r: r["cri"], reverse=True)
+    
+    # Return top N with ranks
+    result = []
+    for i, risk in enumerate(risk_data[:limit]):
+        risk_copy = risk.copy()
+        risk_copy["rank"] = i + 1
+        result.append(risk_copy)
+    
+    return result
+
+
+@router.get("/assets/{asset_id}")
+def get_risk_asset(
+    asset_id: int,
+    lookback_days: int = Query(90, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """
+    Get risk details for a specific asset (real-time computation).
+    
+    Returns: {asset_id, symbol, name, cri, risk_vector, data_meta}
+    """
+    
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    
+    # Fetch recent prices
+    prices_query = (
+        db.query(Price)
+        .filter(Price.asset_id == asset_id)
+        .order_by(Price.time.desc())
+        .limit(lookback_days)
+        .all()
+    )
+    
+    if not prices_query or len(prices_query) < 2:
+        return {
+            "asset_id": asset_id,
+            "symbol": asset.symbol,
+            "name": asset.name or "N/A",
+            "cri": None,
+            "risk_vector": {},
+            "data_meta": {"insufficient_data": True},
+        }
+    
+    # Sort chronologically (oldest first)
+    prices_query.reverse()
+    
+    prices = [float(p.close) for p in prices_query]
+    volumes = [float(p.volume) if p.volume else 0.0 for p in prices_query]
+    
+    # Compute risk
+    risk_vector = compute_risk_vector(prices, volumes, lookback_days)
+    cri = compute_cri(risk_vector)
+    
+    # Aggregate data_meta from latest price
+    data_meta = {}
+    if prices_query:
+        latest = prices_query[-1]
+        if hasattr(latest, "data_meta") and latest.data_meta:
+            data_meta = latest.data_meta.copy() if isinstance(latest.data_meta, dict) else {}
+    
+    data_meta["insufficient_data"] = risk_vector.get("insufficient_data", False)
+    
+    return {
+        "asset_id": asset_id,
+        "symbol": asset.symbol,
+        "name": asset.name or "N/A",
+        "cri": cri,
+        "risk_vector": risk_vector,
+        "data_meta": data_meta,
+    }
+
+
+@router.post("/recompute")
+def recompute_risk(
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """
+    Recompute risk for all assets (admin only).
+    
+    Returns: {computed_count, assets_with_data, assets_insufficient}
+    """
+    
+    assets = db.query(Asset).filter(Asset.active == True).limit(limit).all()
+    
+    computed_count = 0
+    assets_with_data = 0
+    assets_insufficient = 0
+    
+    for asset in assets:
+        prices_query = (
+            db.query(Price)
+            .filter(Price.asset_id == asset.id)
+            .order_by(Price.time.desc())
+            .limit(90)
+            .all()
+        )
+        
+        if prices_query and len(prices_query) >= 2:
+            prices_query.reverse()
+            prices = [float(p.close) for p in prices_query]
+            volumes = [float(p.volume) if p.volume else 0.0 for p in prices_query]
+            
+            risk_vector = compute_risk_vector(prices, volumes, 90)
+            cri = compute_cri(risk_vector)
+            
+            if cri is not None:
+                assets_with_data += 1
+            else:
+                assets_insufficient += 1
+        else:
+            assets_insufficient += 1
+        
+        computed_count += 1
+    
+    return {
+        "status": "recomputed",
+        "computed_count": computed_count,
+        "assets_with_data": assets_with_data,
+        "assets_insufficient": assets_insufficient,
+    }
+
+
+# ============================================================================
+# Legacy endpoints (existing risk snapshots functionality)
+# ============================================================================
 
 @router.get("/overview", response_model=RiskOverviewResponse)
 def get_risk_overview(

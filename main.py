@@ -16,9 +16,9 @@ import uvicorn
 from sqlalchemy import text
 
 from config import settings
-from database import engine, get_db, init_database, test_connections, neo4j_driver
+from database import engine, get_db, init_database, test_connections, neo4j_driver, ensure_min_universe_seed
 from models import Base
-from api import assets, risk, scenarios, auth, market, universe, metrics, alerts
+from api import assets, risk, scenarios, auth, market, universe, metrics, alerts, universe_v8
 from services.cache_service import cache_service
 from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
@@ -36,11 +36,32 @@ BUILD_INFO = {
 }
 
 # Logger - Structured logging with request tracking
+_old_factory = logging.getLogRecordFactory()
+
+
+def _record_factory(*args, **kwargs):
+    """
+    Ensure every LogRecord has request_id so formatters never crash.
+
+    This prevents KeyError in format strings like "[%(request_id)s]" for:
+    - uvicorn/uvicorn.access loggers
+    - third-party libs
+    - startup logs emitted before middleware attaches per-request context
+    """
+    record = _old_factory(*args, **kwargs)
+    if not hasattr(record, "request_id"):
+        record.request_id = "-"
+    return record
+
+
+logging.setLogRecordFactory(_record_factory)
+
+
 class RequestIDFilter(logging.Filter):
     """Add request_id to all log records"""
     def filter(self, record):
         if not hasattr(record, 'request_id'):
-            record.request_id = 'startup'
+            record.request_id = '-'
         return True
 
 logging.basicConfig(
@@ -69,6 +90,15 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠️  BD no completamente inicializada")
     except Exception as e:
         logger.error(f"❌ Error DB: {e}")
+
+    # Auto-bootstrap Universe so /universe is never blank.
+    # This is intentionally best-effort and fast (small deterministic seed).
+    try:
+        seeded = ensure_min_universe_seed(2000)
+        if seeded > 0:
+            logger.info("✅ Universe auto-seed ensured (rows=%d)", seeded)
+    except Exception as e:
+        logger.warning("⚠️ Universe auto-seed skipped: %s", e)
 
     try:
         connections = test_connections()
@@ -213,6 +243,7 @@ app.include_router(scenarios.router, prefix="/api/scenarios")
 app.include_router(market.router, prefix="/api/market")
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(universe_v8.router)
 
 
 @app.get("/")

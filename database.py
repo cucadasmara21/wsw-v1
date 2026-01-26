@@ -90,8 +90,8 @@ def ensure_v8_schema() -> None:
                       symbol text UNIQUE,
                       sector text,
                       morton_code bigint,
-                      taxonomy32 integer,
-                      meta32 integer,
+                      taxonomy32 bigint,
+                      meta32 bigint,
                       x real,
                       y real,
                       z real,
@@ -104,8 +104,16 @@ def ensure_v8_schema() -> None:
                     """
                 )
             )
+            # If an older schema created taxonomy32/meta32 as integer, upgrade to bigint.
+            # Drop dependent view/MV first to avoid ALTER TYPE failures.
+            conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
+            conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;"))
+            conn.execute(text("ALTER TABLE public.universe_assets ALTER COLUMN taxonomy32 TYPE bigint USING taxonomy32::bigint;"))
+            conn.execute(text("ALTER TABLE public.universe_assets ALTER COLUMN meta32 TYPE bigint USING meta32::bigint;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_morton ON public.universe_assets(morton_code);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_sector ON public.universe_assets(sector);"))
+            # Compatibility view for any legacy callers.
+            conn.execute(text("CREATE OR REPLACE VIEW public.assets AS SELECT * FROM public.universe_assets;"))
             logger.info("✅ Ensured table public.universe_assets (canonical)")
     except Exception as e:
         logger.warning(f"⚠️ Could not ensure public.universe_assets: {type(e).__name__}: {e}")

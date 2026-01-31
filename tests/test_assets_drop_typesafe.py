@@ -1,12 +1,15 @@
 """
-Test type-safe drop of public.assets (VIEW or TABLE).
-Uses same DB engine as CI (DATABASE_URL).
+Test type-safe drop helper (drop_relation_type_safe).
+Uses temp relation __ci_drop_test_assets to avoid touching production public.assets.
 """
 import pytest
 from sqlalchemy import text
 
-from database import engine, drop_public_assets_type_safe, init_database
+from database import engine, drop_relation_type_safe, init_database
 from config import parse_db_scheme, settings
+
+
+_CI_TEST_REL = "public.__ci_drop_test_assets"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -19,55 +22,73 @@ def _restore_schema_after_module():
 
 
 def _is_postgres() -> bool:
-    dsn = settings.DATABASE_URL or ""
-    return parse_db_scheme(dsn) == "postgresql"
+    return parse_db_scheme(settings.DATABASE_URL or "") == "postgresql"
 
 
-def _to_regclass_is_null() -> bool:
+def _to_regclass_is_null(rel: str) -> bool:
     with engine.connect() as conn:
-        r = conn.execute(text("SELECT to_regclass('public.assets') IS NULL")).scalar()
+        r = conn.execute(text(f"SELECT to_regclass('{rel}') IS NULL")).scalar()
         return bool(r)
 
 
+def _drop_temp_if_exists(conn) -> None:
+    """Clean up temp relation using type-safe drop."""
+    drop_relation_type_safe(conn, "public", "__ci_drop_test_assets")
+
+
 @pytest.mark.skipif(not _is_postgres(), reason="Requires PostgreSQL (DATABASE_URL)")
-def test_drop_public_assets_table():
-    """Create TABLE public.assets, run drop helper, assert to_regclass is NULL."""
-    with engine.begin() as conn:
-        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
-        conn.execute(
-            text(
-                "CREATE TABLE public.assets (id serial PRIMARY KEY, symbol text);"
+def test_drop_relation_table():
+    """Create TABLE temp, run drop_relation_type_safe, assert gone."""
+    from sqlalchemy.exc import OperationalError
+
+    try:
+        with engine.begin() as conn:
+            _drop_temp_if_exists(conn)
+            conn.execute(
+                text(
+                    f"CREATE TABLE {_CI_TEST_REL} (id serial PRIMARY KEY, symbol text);"
+                )
             )
-        )
-    assert not _to_regclass_is_null()
+        assert not _to_regclass_is_null(_CI_TEST_REL)
 
-    with engine.begin() as conn:
-        drop_public_assets_type_safe(conn)
-    assert _to_regclass_is_null()
-
-
-@pytest.mark.skipif(not _is_postgres(), reason="Requires PostgreSQL (DATABASE_URL)")
-def test_drop_public_assets_view():
-    """Create VIEW public.assets, run drop helper, assert to_regclass is NULL."""
-    with engine.begin() as conn:
-        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
-        conn.execute(
-            text("CREATE VIEW public.assets AS SELECT 1 AS id, 'x'::text AS symbol;")
-        )
-    assert not _to_regclass_is_null()
-
-    with engine.begin() as conn:
-        drop_public_assets_type_safe(conn)
-    assert _to_regclass_is_null()
+        with engine.begin() as conn:
+            drop_relation_type_safe(conn, "public", "__ci_drop_test_assets")
+        assert _to_regclass_is_null(_CI_TEST_REL)
+    except OperationalError:
+        pytest.skip("Postgres not reachable")
 
 
 @pytest.mark.skipif(not _is_postgres(), reason="Requires PostgreSQL (DATABASE_URL)")
-def test_drop_public_assets_noop_when_missing():
-    """When public.assets does not exist, drop is no-op."""
-    with engine.begin() as conn:
-        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
-        drop_public_assets_type_safe(conn)
-    assert _to_regclass_is_null()
+def test_drop_relation_view():
+    """Create VIEW temp, run drop_relation_type_safe, assert gone."""
+    from sqlalchemy.exc import OperationalError
+
+    try:
+        with engine.begin() as conn:
+            _drop_temp_if_exists(conn)
+            conn.execute(
+                text(
+                    f"CREATE VIEW {_CI_TEST_REL} AS SELECT 1 AS id, 'x'::text AS symbol;"
+                )
+            )
+        assert not _to_regclass_is_null(_CI_TEST_REL)
+
+        with engine.begin() as conn:
+            drop_relation_type_safe(conn, "public", "__ci_drop_test_assets")
+        assert _to_regclass_is_null(_CI_TEST_REL)
+    except OperationalError:
+        pytest.skip("Postgres not reachable")
+
+
+@pytest.mark.skipif(not _is_postgres(), reason="Requires PostgreSQL (DATABASE_URL)")
+def test_drop_relation_noop_when_missing():
+    """When relation does not exist, drop is no-op, no exception."""
+    from sqlalchemy.exc import OperationalError
+
+    try:
+        with engine.begin() as conn:
+            _drop_temp_if_exists(conn)
+            drop_relation_type_safe(conn, "public", "__ci_drop_test_assets")
+        assert _to_regclass_is_null(_CI_TEST_REL)
+    except OperationalError:
+        pytest.skip("Postgres not reachable")

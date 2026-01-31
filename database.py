@@ -57,31 +57,44 @@ metadata = MetaData()
 # ==================== TITAN V8 SCHEMA (POSTGRES) ====================
 
 
-def drop_public_assets_type_safe(conn) -> None:
+def drop_relation_type_safe(conn, schema: str, name: str) -> None:
     """
-    Type-safe drop for public.assets (SYNC).
-    If VIEW -> DROP VIEW; if TABLE -> DROP TABLE; if missing -> no-op.
-    conn: SQLAlchemy connection (from engine.connect() or engine.begin()).
+    Type-safe drop for any relation. Never throws WrongObjectType.
+    relkind: 'r' -> TABLE, 'v' -> VIEW, 'm' -> MATERIALIZED VIEW.
     """
     result = conn.execute(
         text(
             """
             SELECT relkind FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relname = 'assets'
+            WHERE n.nspname = :schema AND c.relname = :name
             LIMIT 1;
             """
-        )
+        ),
+        {"schema": schema, "name": name},
     ).scalar()
     if result is None:
         return
-    if result == "v":
-        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-    elif result == "r":
-        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
+    qn = f"{schema}.{name}"
+    if result == "r":
+        conn.execute(text(f"DROP TABLE IF EXISTS {qn} CASCADE;"))
+        logger.debug("Dropped TABLE %s", qn)
+    elif result == "v":
+        conn.execute(text(f"DROP VIEW IF EXISTS {qn} CASCADE;"))
+        logger.debug("Dropped VIEW %s", qn)
+    elif result == "m":
+        conn.execute(text(f"DROP MATERIALIZED VIEW IF EXISTS {qn} CASCADE;"))
+        logger.debug("Dropped MATERIALIZED VIEW %s", qn)
     else:
-        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
+        conn.execute(text(f"DROP TABLE IF EXISTS {qn} CASCADE;"))
+        conn.execute(text(f"DROP VIEW IF EXISTS {qn} CASCADE;"))
+        conn.execute(text(f"DROP MATERIALIZED VIEW IF EXISTS {qn} CASCADE;"))
+        logger.debug("Dropped relation %s (relkind=%s) via fallback", qn, result)
+
+
+def drop_public_assets_type_safe(conn) -> None:
+    """Type-safe drop for public.assets (SYNC). Delegates to drop_relation_type_safe."""
+    drop_relation_type_safe(conn, "public", "assets")
 
 
 async def drop_public_assets_type_safe_async(conn) -> None:
@@ -99,13 +112,16 @@ async def drop_public_assets_type_safe_async(conn) -> None:
     )
     if relkind is None:
         return
-    if relkind == "v":
-        await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
-    elif relkind == "r":
+    if relkind == "r":
         await conn.execute("DROP TABLE IF EXISTS public.assets CASCADE;")
+    elif relkind == "v":
+        await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
+    elif relkind == "m":
+        await conn.execute("DROP MATERIALIZED VIEW IF EXISTS public.assets CASCADE;")
     else:
-        await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
         await conn.execute("DROP TABLE IF EXISTS public.assets CASCADE;")
+        await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
+        await conn.execute("DROP MATERIALIZED VIEW IF EXISTS public.assets CASCADE;")
 
 
 def ensure_public_assets_v8_view(conn) -> None:
@@ -113,7 +129,7 @@ def ensure_public_assets_v8_view(conn) -> None:
     Ensure public.assets_v8 exists as Route A compatibility VIEW sourced from universe_assets.
     Does NOT touch public.assets (must remain TABLE for legacy/inserts).
     """
-    conn.execute(text("DROP VIEW IF EXISTS public.assets_v8 CASCADE;"))
+    drop_relation_type_safe(conn, "public", "assets_v8")
     conn.execute(
         text(
             """
@@ -497,12 +513,26 @@ def init_database() -> bool:
         except Exception as e:
             logger.debug("assets_v8 view skip (universe_assets may be empty): %s", e)
 
-        # CI/test: minimal seed so universe_assets and MV have rows (v8 snapshot ready).
+        # CI/test: minimal seed so universe_assets, source_assets, and MV have rows.
         if os.getenv("CI", "").lower() in ("1", "true", "yes") or os.getenv("PYTEST_CURRENT_TEST"):
             n = ensure_min_universe_seed(min_rows=2)
             if n > 0:
                 try:
                     with engine.begin() as conn:
+                        # Backfill source_assets for /api/universe/tree (reads source_assets first)
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO public.source_assets (symbol, sector, x, y, z, meta32, titan_taxonomy32)
+                                SELECT DISTINCT ua.symbol, ua.sector, ua.x, ua.y, ua.z, ua.meta32, ua.taxonomy32
+                                FROM public.universe_assets ua
+                                WHERE ua.symbol IS NOT NULL AND ua.symbol <> ''
+                                ON CONFLICT (symbol) DO UPDATE SET
+                                  sector=EXCLUDED.sector, x=EXCLUDED.x, y=EXCLUDED.y, z=EXCLUDED.z,
+                                  meta32=EXCLUDED.meta32, titan_taxonomy32=EXCLUDED.titan_taxonomy32;
+                                """
+                            )
+                        )
                         conn.execute(text("REFRESH MATERIALIZED VIEW public.universe_snapshot_v8"))
                 except Exception:
                     pass

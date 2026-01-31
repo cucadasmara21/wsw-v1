@@ -58,7 +58,11 @@ def meta32_simple(i: int) -> int:
     return (shock & 0xFF) | ((risk & 0xFF) << 8) | ((trend & 0x3) << 16) | ((vital & 0x3F) << 18) | ((macro & 0xFF) << 24)
 
 
+_NS_UNIVERSE = uuid.UUID("a1b2c3d4-e5f6-4789-abcd-0123456789ab")
+
+
 def iter_synthetic_rows(n: int, *, prefix: str = "SYN") -> Iterable[dict]:
+    """Deterministic rows: asset_id from uuid5(symbol) for stable identity across runs."""
     sectors = ["TECH", "FIN", "HLTH", "ENER", "INDS", "COMM", "MATR", "UTIL"]
     for i in range(int(n)):
         sym = f"{prefix}{i:06d}"
@@ -74,7 +78,7 @@ def iter_synthetic_rows(n: int, *, prefix: str = "SYN") -> Iterable[dict]:
         mort = morton63_from_unit_xyz(x, y, z)
         vb = pack_vertex28(int(mort) & 0xFFFFFFFF, int(meta32) & 0xFFFFFFFF, x, y, z, risk, shock)
         yield {
-            "asset_id": uuid.uuid4(),
+            "asset_id": uuid.uuid5(_NS_UNIVERSE, f"wsw.universe.{sym}"),
             "symbol": sym,
             "sector": sector,
             "morton_code": int(mort),

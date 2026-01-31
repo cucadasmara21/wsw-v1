@@ -10,7 +10,15 @@ from models import Asset, Price, RiskSnapshot, Category, Group, Subgroup
 def test_required_tables_exist():
     """Verify all required tables exist after init_database(); assets must be TABLE (insertable)."""
     from database import init_database
-    init_database()
+    from config import parse_db_scheme, settings
+    from sqlalchemy.exc import OperationalError
+
+    if parse_db_scheme(settings.DATABASE_URL or "") != "postgresql":
+        pytest.skip("Requires PostgreSQL")
+    try:
+        init_database()
+    except OperationalError:
+        pytest.skip("Postgres not reachable")
 
     inspector = inspect(engine)
     tables = inspector.get_table_names()
@@ -74,7 +82,7 @@ def test_asset_category_relationship():
 
 
 def test_assets_v8_view_creatable():
-    """Verify public.assets_v8 view exists when universe_assets is present (Route A)."""
+    """Verify public.assets_v8 view exists (relkind v) with asset_uid and required columns."""
     from database import init_database
     from config import parse_db_scheme, settings
     from sqlalchemy.exc import OperationalError
@@ -84,9 +92,27 @@ def test_assets_v8_view_creatable():
     try:
         init_database()
         with engine.connect() as conn:
-            v = conn.execute(
+            exists = conn.execute(
                 text("SELECT to_regclass('public.assets_v8') IS NOT NULL")
             ).scalar()
+            relkind = conn.execute(
+                text(
+                    "SELECT relkind FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND c.relname = 'assets_v8'"
+                )
+            ).scalar()
+            cols = conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'assets_v8'"
+                )
+            ).fetchall()
     except OperationalError:
         pytest.skip("Postgres not reachable")
-    assert v, "public.assets_v8 view should exist after init"
+    assert exists, "public.assets_v8 view should exist after init"
+    assert relkind == "v", "public.assets_v8 must be VIEW (relkind='v')"
+    col_names = {r[0] for r in cols}
+    assert "asset_uid" in col_names
+    assert "symbol" in col_names
+    assert "id" in col_names

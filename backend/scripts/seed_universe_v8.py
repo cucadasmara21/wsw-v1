@@ -360,12 +360,13 @@ async def ensure_quantum_schema(conn: asyncpg.Connection) -> None:
         CREATE INDEX IF NOT EXISTS ix_universe_assets_morton ON public.universe_assets(morton_code);
     """)
 
-    # Recreate Route A compatibility view (do NOT replace public.assets TABLE).
+    # Recreate Route A compatibility view (stable id from hashtext; asset_uid from asset_id).
     await conn.execute(
         """
         CREATE OR REPLACE VIEW public.assets_v8 AS
         SELECT
-          row_number() OVER (ORDER BY symbol)::int AS id,
+          (abs(hashtext(COALESCE(symbol, '')))::bigint % 2147483647)::int AS id,
+          asset_id::text AS asset_uid,
           symbol,
           COALESCE(NULLIF(btrim(symbol), ''), 'UNKNOWN') AS name,
           sector,

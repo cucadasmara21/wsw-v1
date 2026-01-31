@@ -4,8 +4,7 @@ from __future__ import annotations
 Route A (TITAN V8) assets endpoints (PostgreSQL-only).
 
 Contract:
-- `/api/assets?limit=50` returns JSON 200 list sourced from Postgres canonical objects
-  (`public.assets` view -> `public.source_assets`).
+- `/api/assets?limit=50` returns JSON 200 list sourced from `public.assets` (TABLE).
 - No ORM usage here (prevents SQLAlchemy mapper/DDL issues from impacting operability).
 
 Validation (DoD snippets):
@@ -30,7 +29,7 @@ async def get_assets(
     q: Optional[str] = Query(None, description="Search by symbol or name (case-insensitive)"),
 ):
     """
-    Route A: list assets from `public.assets` view (Postgres).
+    Route A: list assets from `public.assets` (TABLE).
 
     Response shape is intentionally stable for the UI:
     - id (int): row_number() over (symbol) for display only

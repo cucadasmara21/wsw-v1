@@ -106,6 +106,8 @@ class Settings(BaseSettings):
     ENABLE_PARTITIONS: bool = Field(default=False, env="ENABLE_PARTITIONS")
     # P-04: VoidPool slot recycling. When True: Death/Birth wired; fail-fast if pool fails.
     ENABLE_VOIDPOOL: bool = Field(default=True, env="ENABLE_VOIDPOOL")
+    # Provenance: when True, add ingestion_run_id/source/observed_at/row_digest to Route A tables.
+    ENABLE_PROVENANCE: bool = Field(default=False, env="ENABLE_PROVENANCE")
 
     # ==================== NEO4J (OPCIONAL) ====================
     NEO4J_URI: Optional[str] = Field(default=None, env="NEO4J_URI")

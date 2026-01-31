@@ -128,6 +128,7 @@ def ensure_public_assets_v8_view(conn) -> None:
     """
     Ensure public.assets_v8 exists as Route A compatibility VIEW sourced from universe_assets.
     Does NOT touch public.assets (must remain TABLE for legacy/inserts).
+    Identity: asset_uid (UUID) is stable; id is deterministic from symbol (hashtext) for compat.
     """
     drop_relation_type_safe(conn, "public", "assets_v8")
     conn.execute(
@@ -135,7 +136,8 @@ def ensure_public_assets_v8_view(conn) -> None:
             """
             CREATE OR REPLACE VIEW public.assets_v8 AS
             SELECT
-              row_number() OVER (ORDER BY symbol)::int AS id,
+              (abs(hashtext(COALESCE(symbol, '')))::bigint % 2147483647)::int AS id,
+              asset_id::text AS asset_uid,
               symbol,
               COALESCE(NULLIF(btrim(symbol), ''), 'UNKNOWN') AS name,
               sector,
@@ -218,8 +220,8 @@ def ensure_v8_schema() -> None:
         conn.execute(text("ALTER TABLE public.universe_assets ADD COLUMN IF NOT EXISTS source_id uuid;"))
 
         # If an older schema created taxonomy32/meta32 as integer, upgrade to bigint.
-        # Drop dependent MV first to avoid ALTER TYPE failures.
-        conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;"))
+        # Drop dependent MV first to avoid ALTER TYPE failures (type-safe).
+        drop_relation_type_safe(conn, "public", "universe_snapshot_v8")
         conn.execute(
             text(
                 """
@@ -250,6 +252,13 @@ def ensure_v8_schema() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_morton ON public.universe_assets(morton_code);"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_sector ON public.universe_assets(sector);"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_source_id ON public.universe_assets(source_id);"))
+
+        # Provenance columns (optional, idempotent)
+        if settings.ENABLE_PROVENANCE:
+            conn.execute(text("ALTER TABLE public.universe_assets ADD COLUMN IF NOT EXISTS ingestion_run_id text;"))
+            conn.execute(text("ALTER TABLE public.universe_assets ADD COLUMN IF NOT EXISTS source text;"))
+            conn.execute(text("ALTER TABLE public.universe_assets ADD COLUMN IF NOT EXISTS observed_at timestamptz;"))
+            conn.execute(text("ALTER TABLE public.universe_assets ADD COLUMN IF NOT EXISTS row_digest text;"))
 
         # Route A staging table (required by runbooks + deterministic seeder).
         conn.execute(

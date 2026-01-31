@@ -65,10 +65,20 @@ async def get_assets(
         raise HTTPException(status_code=500, detail=f"Route A /api/assets failed: {type(e).__name__}: {e}")
 
 
-@router.get("/{asset_id}", summary="Route A legacy asset_id endpoint (disabled)")
+@router.get("/{asset_id}", summary="Get asset by id")
 async def get_asset(asset_id: int):
-    # Route A: canonical assets are addressed by symbol via `/api/assets/detail?symbol=...`.
-    raise HTTPException(status_code=410, detail="Route A: /api/assets/{asset_id} is disabled. Use /api/assets/detail?symbol=...")
+    """Return asset by id or 404 if not found."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT id, symbol, name, sector FROM public.assets WHERE id = :aid"),
+                {"aid": asset_id},
+            ).mappings().first()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Route A /api/assets/{{id}} failed: {type(e).__name__}: {e}")
+    if not row:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return dict(row)
 
 
 @router.get("/detail", summary="Get asset detail with price data")

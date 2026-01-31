@@ -5,6 +5,8 @@ import { usePointData } from '../hooks/usePointData'
 import { PointTooltip } from './PointTooltip'
 import { AssetDetailPanel } from './AssetDetailPanel'
 import { TITAN_V8_VERTEX_SHADER, TITAN_V8_FRAGMENT_SHADER, PICKING_VERTEX_SHADER, PICKING_FRAGMENT_SHADER } from '../render/quantumShaders'
+import { ZstdCodec } from 'zstd-codec'
+import { validateVertex28Buffer } from '../lib/vertex28Validation'
 
 export interface TitanCanvasRef {
   refresh: () => void
@@ -14,9 +16,6 @@ export interface TitanCanvasRef {
 interface TitanCanvasProps {
   pointSize?: number
   glowStrength?: number
-  streamUrlBin?: string
-  streamUrlMeta?: string
-  streamUrlSymbols?: string
   pollMs?: number
   riskMin?: number
   shockMin?: number
@@ -29,21 +28,37 @@ interface TitanCanvasProps {
 
 const DEBUG_POLL = true
 
-const STRIDE_BYTES = 12
 const VERTEX28_STRIDE = 28
-const OFF_X = 0
-const OFF_Y = 2
-const OFF_ATTR = 4
-const OFF_META = 8
 
-// Vertex28 offsets
-const V28_OFF_TAXONOMY = 0
+let _zstdInit: Promise<any> | null = null
+let _zstdSimple: any | null = null
+
+async function _getZstdSimple(): Promise<any> {
+  if (_zstdSimple) return _zstdSimple
+  if (_zstdInit) return _zstdInit
+  _zstdInit = new Promise((resolve) => {
+    ZstdCodec.run((zstd: any) => {
+      _zstdSimple = new zstd.Simple()
+      resolve(_zstdSimple)
+    })
+  })
+  return _zstdInit
+}
+
+async function decompressZstdArrayBuffer(ab: ArrayBuffer): Promise<ArrayBuffer> {
+  const simple = await _getZstdSimple()
+  const out: Uint8Array = simple.decompress(new Uint8Array(ab))
+  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
+}
+
+// Vertex28 offsets (Route A): <IIfffff = morton_u32, meta32_u32, x,y,z,risk,shock
+const V28_OFF_MORTON = 0
 const V28_OFF_META = 4
 const V28_OFF_X = 8
 const V28_OFF_Y = 12
 const V28_OFF_Z = 16
-const V28_OFF_FIDELITY = 20
-const V28_OFF_SPIN = 24
+const V28_OFF_RISK = 20
+const V28_OFF_SHOCK = 24
 
 // Web Worker for screen-space grid picking (inline blob)
 const PICKING_WORKER_CODE = `
@@ -143,117 +158,7 @@ void main() {
 }
 `
 
-const TITAN_VERTEX_SHADER = `#version 300 es
-precision highp float;
-precision highp int;
-
-layout(location=0) in uint a_x;
-layout(location=1) in uint a_y;
-layout(location=2) in uint a_attr;
-layout(location=3) in uint a_meta;
-
-uniform float u_pointSize;
-uniform float u_time;
-uniform int u_mode;
-uniform float u_zoom;
-uniform vec2 u_pan;
-uniform vec2 u_xyMin;
-uniform vec2 u_xyMax;
-uniform float u_riskMin;
-uniform float u_shockMin;
-uniform int u_trendMask;
-uniform float u_GlobalShockFactor;
-
-out vec4 v_color;
-
-uint get_bits(uint x, uint shift, uint mask) {
-  return (x >> shift) & mask;
-}
-
-void main() {
-  uint shock = get_bits(a_meta, 0u, 255u);
-  uint risk  = get_bits(a_meta, 8u, 255u);
-  uint trend = get_bits(a_meta, 16u, 3u);
-  uint vital = get_bits(a_meta, 18u, 63u);
-  uint macro = get_bits(a_meta, 24u, 255u);
-
-  float fshock = float(shock) / 255.0;
-  float frisk  = float(risk)  / 255.0;
-  float fvital = float(vital) / 63.0;
-  float fmacro = float(macro) / 255.0;
-
-  float filterAlpha = 1.0;
-  if (frisk < u_riskMin) filterAlpha = 0.0;
-  if (fshock < u_shockMin) filterAlpha = 0.0;
-  if ((u_trendMask & (1 << int(trend))) == 0) filterAlpha = 0.0;
-
-  float xf = float(a_x);
-  float yf = float(a_y);
-
-  vec2 denom = max(u_xyMax - u_xyMin, vec2(1.0));
-  vec2 p01 = (vec2(xf, yf) - u_xyMin) / denom;
-  
-  if (denom.x == 1.0 && denom.y == 1.0) {
-    float angle = float(gl_VertexID) * 0.618034 * 6.28318;
-    float radius = 0.1 + float(gl_VertexID) * 0.0001;
-    p01 = vec2(0.5, 0.5) + vec2(cos(angle), sin(angle)) * radius;
-  }
-  
-  vec2 pos = p01 * 2.0 - 1.0;
-
-  if (fshock > 0.05) {
-    float w = 18.0 + 24.0 * fshock;
-    float amp = 0.002 + 0.010 * fshock;
-    pos += vec2(sin(u_time * w), cos(u_time * w)) * amp;
-  }
-
-  vec2 cam = (pos + u_pan) * u_zoom;
-  gl_Position = vec4(cam, 0.0, 1.0);
-
-  float ps = max(2.0, u_pointSize);
-
-  if (u_mode == 2) {
-    vec3 base;
-    if (trend == 1u)      base = vec3(0.0, 1.0, 1.0);
-    else if (trend == 2u) base = vec3(1.0, 0.0, 1.0);
-    else                  base = vec3(0.75);
-
-    float globalPulse = 1.0 + sin(u_time * 3.0) * u_GlobalShockFactor * 0.1;
-    float intensity = (0.40 + 1.60 * frisk) * globalPulse;
-    intensity *= (0.85 + 0.30 * fmacro);
-
-    float alpha = max(0.08, fvital) * filterAlpha;
-
-    v_color = vec4(base * intensity, alpha);
-    gl_PointSize = ps * (1.0 + 2.0 * frisk) * (1.0 + u_GlobalShockFactor * 0.2);
-  }
-  else if (u_mode == 1) {
-    float intensity = 0.25 + 2.25 * frisk;
-    v_color = vec4(vec3(intensity), 0.85 * filterAlpha);
-    gl_PointSize = ps * (1.0 + 1.5 * frisk);
-  }
-  else {
-    v_color = vec4(1.0, 1.0, 1.0, 0.8 * filterAlpha);
-    gl_PointSize = ps;
-  }
-}
-`
-
-const TITAN_FRAGMENT_SHADER = `#version 300 es
-precision highp float;
-
-in vec4 v_color;
-out vec4 outColor;
-
-void main() {
-  vec2 uv = gl_PointCoord * 2.0 - 1.0;
-  float r2 = dot(uv, uv);
-  if (r2 > 1.0) discard;
-
-  float a = v_color.a * smoothstep(1.0, 0.0, r2);
-  outColor = vec4(v_color.rgb, a);
-}
-`
+// Route A: legacy shaders removed (Vertex28-only)
 
 const SINGULARITY_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
@@ -404,96 +309,20 @@ function link(gl: WebGL2RenderingContext, vsSrc: string, fsSrc: string): WebGLPr
 function setCommonGLState(gl: WebGL2RenderingContext) {
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+  gl.enable(gl.PROGRAM_POINT_SIZE)
   gl.disable(gl.DEPTH_TEST)
   gl.disable(gl.CULL_FACE)
 }
 
-interface Bounds {
-  minX: number
-  maxX: number
-  minY: number
-  maxY: number
-  uniqueX: number
-  uniqueY: number
-  degenerate: boolean
-}
-
-function computeBounds(ab: ArrayBuffer, count: number): Bounds {
-  const view = new DataView(ab)
-  const xSet = new Set<number>()
-  const ySet = new Set<number>()
-  let minX = 65535, maxX = 0, minY = 65535, maxY = 0
-
-  for (let i = 0; i < count; i++) {
-    const off = i * STRIDE_BYTES
-    const x = view.getUint16(off + OFF_X, true)
-    const y = view.getUint16(off + OFF_Y, true)
-    xSet.add(x)
-    ySet.add(y)
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-  }
-
-  return {
-    minX,
-    maxX,
-    minY,
-    maxY,
-    uniqueX: xSet.size,
-    uniqueY: ySet.size,
-    degenerate: (minX === maxX) || (minY === maxY)
-  }
-}
-
-async function decodePoints(ab: ArrayBuffer, symbolsMap: Map<number, string>, bounds: Bounds): Promise<PointData[]> {
-  const view = new DataView(ab)
-  const count = Math.floor(ab.byteLength / STRIDE_BYTES)
-  const decoded: PointData[] = []
-
-  for (let i = 0; i < count; i++) {
-    const off = i * STRIDE_BYTES
-    const x = view.getUint16(off + OFF_X, true)
-    const y = view.getUint16(off + OFF_Y, true)
-    const meta32 = view.getUint32(off + OFF_META, true)
-
-    const shock8 = meta32 & 0xFF
-    const risk8 = (meta32 >> 8) & 0xFF
-    const trend2 = (meta32 >> 16) & 0x03
-    const vital6 = (meta32 >> 18) & 0x3F
-    const macro8 = (meta32 >> 24) & 0xFF
-
-    const denomX = bounds.maxX - bounds.minX || 1
-    const denomY = bounds.maxY - bounds.minY || 1
-
-    decoded.push({
-      index: i,
-      x01: (x - bounds.minX) / denomX,
-      y01: (y - bounds.minY) / denomY,
-      shock: shock8 / 255.0,
-      risk: risk8 / 255.0,
-      trend: trend2,
-      vital: vital6 / 63.0,
-      macro: macro8 / 255.0,
-      symbol: symbolsMap.get(i) || `AST${String(i).padStart(6, '0')}`,
-      assetId: i
-    })
-  }
-
-  return decoded
-}
+// Route A: legacy (uint16) buffers removed.
 
 export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
   pointSize = 10.0,
   glowStrength = 1.0,
-  streamUrlBin = '/api/universe/points.bin?limit=10000',
-  streamUrlMeta = '/api/universe/points.meta?limit=10000',
-  streamUrlSymbols = '/api/universe/points.symbols?limit=10000',
   pollMs = 500,
   riskMin = 0,
   shockMin = 0,
-  trendFilter = new Set([0, 1, 2]),
+  trendFilter = new Set([0, 1, 2, 3, 4, 5, 6, 7]),
   onHover,
   onSelect,
   onAssetClick,
@@ -590,22 +419,22 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
   })
 
   // V8 state
-  const useV8Ref = useRef(true) // Toggle for V8 vs legacy
-  const v8BackoffUntilRef = useRef(0) // Timestamp until which V8 is disabled due to 503
+  const useV8Ref = useRef(true) // Route A: always true
+  const v8BackoffUntilRef = useRef(0)
   const v8NextRetryAtRef = useRef<number>(0)
   const v8TypedArraysRef = useRef<{
     positions: Float32Array | null
-    fidelity: Float32Array | null
-    taxonomy: Uint32Array | null
-    meta: Uint32Array | null
-    spin: Float32Array | null
+    risk: Float32Array | null
+    shock: Float32Array | null
+    morton: Uint32Array | null
+    meta32: Uint32Array | null
     count: number
   }>({
     positions: null,
-    fidelity: null,
-    taxonomy: null,
-    meta: null,
-    spin: null,
+    risk: null,
+    shock: null,
+    morton: null,
+    meta32: null,
     count: 0
   })
   const pickingFramebufferRef = useRef<WebGLFramebuffer | null>(null)
@@ -661,181 +490,19 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
     }
   }, [])
 
-  const processPointsData = async (ab: ArrayBuffer) => {
-    if (ab.byteLength === 0) return
-    if (ab.byteLength % 12 !== 0) return
-    
-    const fetchStart = performance.now()
-    const count = Math.floor(ab.byteLength / 12)
-    vertexCountRef.current = count
-    bufferDataRef.current = ab
-    
-    const bounds = computeBounds(ab, count)
-    boundsRef.current = bounds
-    
-    const symbolsMap = symbolsMapRef.current || new Map()
-    const decoded = await decodePoints(ab, symbolsMap, bounds)
-    pointsDataRef.current = decoded
-    
-    const sampleSize = Math.min(256, decoded.length)
-    let shockSum = 0.0
-    for (let i = 0; i < sampleSize; i++) {
-      shockSum += decoded[i].shock
-    }
-    globalShockFactorRef.current = sampleSize > 0 ? shockSum / sampleSize : 0.0
-    
-    const fetchMs = Math.round((performance.now() - fetchStart))
-    
-    setStats(prev => ({
-      ...prev,
-      points: count,
-      bytes: ab.byteLength,
-      stride: 12,
-      fetchMs,
-      xMin: bounds.minX,
-      xMax: bounds.maxX,
-      yMin: bounds.minY,
-      yMax: bounds.maxY,
-      xyDegen: bounds.degenerate,
-      uniqueX512: bounds.uniqueX,
-      uniqueY512: bounds.uniqueY,
-      dataDegenerateFallback: bounds.degenerate
-    }))
-    
-    const gl = glRef.current
-    const vbo = bufferRef.current
-    if (gl && vbo && count > 0) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, vbo)
-      const u8 = new Uint8Array(ab)
-      gl.bufferData(gl.ARRAY_BUFFER, u8, gl.DYNAMIC_DRAW)
-      const err = gl.getError()
-      if (err !== gl.NO_ERROR) {
-        console.warn('[legacy] gl.bufferData error', { err, bytes: ab.byteLength, count })
-        debugForceRef.current = true
-        setStats(prev => ({ ...prev, shaderLog: 'WebGL upload failed in legacy mode; forcing debug renderer.' }))
-      }
-      gl.bindBuffer(gl.ARRAY_BUFFER, null)
-    }
-  }
+  // Route A: legacy 12-byte pipeline removed
 
-  const rebuildPipelineIfNeeded = useCallback((wantV8: boolean) => {
-    if (useV8Ref.current === wantV8) return
-    const gl = glRef.current
-    const vbo = bufferRef.current
-    if (!gl || !vbo) {
-      useV8Ref.current = wantV8
-      return
-    }
+  // Route A: no pipeline rebuild (V8-only)
 
-    try {
-      useV8Ref.current = wantV8
-
-      const vs = wantV8 ? TITAN_V8_VERTEX_SHADER : TITAN_VERTEX_SHADER
-      const fs = wantV8 ? TITAN_V8_FRAGMENT_SHADER : TITAN_FRAGMENT_SHADER
-      const prog = link(gl, vs, fs)
-
-      if (programRef.current) gl.deleteProgram(programRef.current)
-      programRef.current = prog
-      programLinkOkRef.current = true
-      setStats(prev => ({ ...prev, programLink: true, shaderLog: null }))
-
-      if (vaoRef.current) gl.deleteVertexArray(vaoRef.current)
-      const vao = gl.createVertexArray()
-      if (!vao) throw new Error('Failed to create VAO')
-
-      gl.bindVertexArray(vao)
-      gl.bindBuffer(gl.ARRAY_BUFFER, vbo)
-
-      // V8 mode attributes
-      const aPosLoc = gl.getAttribLocation(prog, 'a_position')
-      const aFidelityLoc = gl.getAttribLocation(prog, 'a_fidelity')
-      const aTaxonomyLoc = gl.getAttribLocation(prog, 'a_taxonomy')
-      const aMetaLoc = gl.getAttribLocation(prog, 'a_meta')
-      const aSpinLoc = gl.getAttribLocation(prog, 'a_spin')
-
-      // Legacy mode attributes
-      const aXLoc = gl.getAttribLocation(prog, 'a_x')
-      const aYLoc = gl.getAttribLocation(prog, 'a_y')
-      const aAttrLoc = gl.getAttribLocation(prog, 'a_attr')
-      const aMetaLocLegacy = gl.getAttribLocation(prog, 'a_meta')
-
-      if (wantV8) {
-        if (aPosLoc >= 0) {
-          gl.enableVertexAttribArray(aPosLoc)
-          gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_X)
-        }
-        if (aFidelityLoc >= 0) {
-          gl.enableVertexAttribArray(aFidelityLoc)
-          gl.vertexAttribPointer(aFidelityLoc, 1, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_FIDELITY)
-        }
-        if (aTaxonomyLoc >= 0) {
-          gl.enableVertexAttribArray(aTaxonomyLoc)
-          gl.vertexAttribIPointer(aTaxonomyLoc, 1, gl.UNSIGNED_INT, VERTEX28_STRIDE, V28_OFF_TAXONOMY)
-        }
-        if (aMetaLoc >= 0) {
-          gl.enableVertexAttribArray(aMetaLoc)
-          gl.vertexAttribIPointer(aMetaLoc, 1, gl.UNSIGNED_INT, VERTEX28_STRIDE, V28_OFF_META)
-        }
-        if (aSpinLoc >= 0) {
-          gl.enableVertexAttribArray(aSpinLoc)
-          gl.vertexAttribPointer(aSpinLoc, 1, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_SPIN)
-        }
-      } else {
-        if (aXLoc >= 0) {
-          gl.enableVertexAttribArray(aXLoc)
-          gl.vertexAttribIPointer(aXLoc, 1, gl.UNSIGNED_SHORT, STRIDE_BYTES, OFF_X)
-        }
-        if (aYLoc >= 0) {
-          gl.enableVertexAttribArray(aYLoc)
-          gl.vertexAttribIPointer(aYLoc, 1, gl.UNSIGNED_SHORT, STRIDE_BYTES, OFF_Y)
-        }
-        if (aAttrLoc >= 0) {
-          gl.enableVertexAttribArray(aAttrLoc)
-          gl.vertexAttribIPointer(aAttrLoc, 1, gl.UNSIGNED_INT, STRIDE_BYTES, OFF_ATTR)
-        }
-        if (aMetaLocLegacy >= 0) {
-          gl.enableVertexAttribArray(aMetaLocLegacy)
-          gl.vertexAttribIPointer(aMetaLocLegacy, 1, gl.UNSIGNED_INT, STRIDE_BYTES, OFF_META)
-        }
-      }
-
-      gl.bindVertexArray(null)
-      gl.bindBuffer(gl.ARRAY_BUFFER, null)
-
-      vaoRef.current = vao
-      vaoBoundRef.current = true
-      setStats(prev => ({ ...prev, vaoBound: true }))
-    } catch (e: any) {
-      const msg = e instanceof Error ? e.message : String(e)
-      console.error('[TitanCanvas] pipeline rebuild failed', { wantV8, msg })
-      debugForceRef.current = true
-      setStats(prev => ({ ...prev, shaderLog: `Pipeline rebuild failed (${wantV8 ? 'V8' : 'legacy'}): ${msg}` }))
-    }
-  }, [])
-
-  // V8: Decompress Zstd
-  const decompressZstd = async (compressed: ArrayBuffer): Promise<ArrayBuffer> => {
-    try {
-      // Try zstd-codec first (preferred)
-      const { ZstdCodec } = await import('zstd-codec')
-      const codec = await ZstdCodec.load()
-      const stream = new codec.Stream()
-      const decompressed = stream.decompress(new Uint8Array(compressed))
-      return decompressed.buffer
-    } catch (e) {
-      console.warn('[V8] zstd-codec not available, trying fallback:', e)
-      // Fallback: if backend didn't compress, return as-is
-      return compressed
-    }
-  }
+  // Route A: Vertex28 only. Supports compression=zstd (default) and compression=none for debugging.
 
   // V8: Parse Vertex28 format
   const parseVertex28 = (buffer: ArrayBuffer): {
     positions: Float32Array
-    fidelity: Float32Array
-    taxonomy: Uint32Array
-    meta: Uint32Array
-    spin: Float32Array
+    risk: Float32Array
+    shock: Float32Array
+    morton: Uint32Array
+    meta32: Uint32Array
     count: number
   } => {
     const parseStart = performance.now()
@@ -844,163 +511,245 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
     
     // Pre-allocate typed arrays (zero-copy strategy)
     const positions = new Float32Array(count * 3)
-    const fidelity = new Float32Array(count)
-    const taxonomy = new Uint32Array(count)
-    const meta = new Uint32Array(count)
-    const spin = new Float32Array(count)
+    const risk = new Float32Array(count)
+    const shock = new Float32Array(count)
+    const morton = new Uint32Array(count)
+    const meta32 = new Uint32Array(count)
     
-    // Parse using DataView for exact offset access
     const view = new DataView(buffer)
     for (let i = 0; i < count; i++) {
       const offset = i * VERTEX28_STRIDE
-      
-      // Extract fields at exact offsets
-      taxonomy[i] = view.getUint32(offset + V28_OFF_TAXONOMY, true) // little-endian
-      meta[i] = view.getUint32(offset + V28_OFF_META, true)
+      if (offset + 28 > buffer.byteLength) {
+        throw new Error('FAIL_FAST: VERTEX28_BOUNDS')
+      }
+      morton[i] = view.getUint32(offset + V28_OFF_MORTON, true) // little-endian
+      meta32[i] = view.getUint32(offset + V28_OFF_META, true)
       positions[i * 3] = view.getFloat32(offset + V28_OFF_X, true)
       positions[i * 3 + 1] = view.getFloat32(offset + V28_OFF_Y, true)
       positions[i * 3 + 2] = view.getFloat32(offset + V28_OFF_Z, true)
-      fidelity[i] = view.getFloat32(offset + V28_OFF_FIDELITY, true)
-      spin[i] = view.getFloat32(offset + V28_OFF_SPIN, true)
+      risk[i] = view.getFloat32(offset + V28_OFF_RISK, true)
+      shock[i] = view.getFloat32(offset + V28_OFF_SHOCK, true)
     }
     
     const parseMs = Math.round(performance.now() - parseStart)
     quantumStatsRef.current.parseMs = parseMs
     
-    return { positions, fidelity, taxonomy, meta, spin, count }
+    return { positions, risk, shock, morton, meta32, count }
   }
 
-  // V8: Fetch snapshot
-  const fetchV8Snapshot = async (signal?: AbortSignal): Promise<boolean> => {
+  const v8Compression = (() => {
+    // Default Route A: zstd. Allow debugging with ?v8Compression=none
     try {
-      const url = '/api/universe/v8/snapshot?format=vertex28&compression=zstd'
-      const fetchStart = performance.now()
-      
-      const resp = await fetch(url, { signal })
-      
-      if (resp.status === 204) {
-        console.warn('[V8] 204 No Content')
-        setStats(prev => ({ ...prev, noData: true }))
-        return false
+      const p = new URLSearchParams(window.location.search).get('v8Compression')
+      return p === 'none' ? 'none' : 'zstd'
+    } catch {
+      return 'zstd'
+    }
+  })()
+  // V8: Fetch snapshot (Route A / Vertex28)
+  // - Fail-fast on contract violations (stride != 28, byteLength % 28 != 0)
+  // - 503 => backoff + keep last known good VBO
+  // - On non-503 errors => surface in shaderLog, but DO NOT clear current VBO
+  const fetchV8Snapshot = async (signal?: AbortSignal): Promise<boolean> => {
+    const g = glRef.current
+    const vbo = bufferRef.current
+
+    // Local helpers (kept inside to avoid file-wide noise)
+    const computeBoundsFromPositions = (pos: Float32Array, count: number) => {
+      let minX = Number.POSITIVE_INFINITY
+      let maxX = Number.NEGATIVE_INFINITY
+      let minY = Number.POSITIVE_INFINITY
+      let maxY = Number.NEGATIVE_INFINITY
+
+      for (let i = 0; i < count; i++) {
+        const x = pos[i * 3]
+        const y = pos[i * 3 + 1]
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
       }
-      
+
+      // Fallback if degenerate/invalid
+      if (!Number.isFinite(minX) || !Number.isFinite(maxX) || minX === maxX) {
+        minX = -1
+        maxX = 1
+      }
+      if (!Number.isFinite(minY) || !Number.isFinite(maxY) || minY === maxY) {
+        minY = -1
+        maxY = 1
+      }
+
+      return { minX, maxX, minY, maxY, degenerate: (minX === maxX) || (minY === maxY) }
+    }
+
+    try {
+      const url = `/api/universe/v8/snapshot?format=vertex28&compression=${v8Compression}`
+      const fetchStart = performance.now()
+
+      const resp = await fetch(url, { signal })
+
       if (resp.status === 503) {
-        console.warn('[V8] snapshot 503: backend/proxy unavailable; falling back to legacy')
-        setStats(prev => ({ ...prev, shaderLog: 'V8 snapshot unavailable (503). Using legacy mode.' }))
+        // Backend temporary unavailable — keep last good VBO
+        console.warn('[V8] snapshot 503: backend unavailable')
+        setStats(prev => ({ ...prev, shaderLog: 'V8 snapshot unavailable (503). Retrying…' }))
         v8NextRetryAtRef.current = Date.now() + 5000
         return false
       }
-      
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      
-      // Get headers
-      const stride = resp.headers.get('X-Vertex-Stride')
-      const assetCount = resp.headers.get('X-Asset-Count')
-      const version = resp.headers.get('X-Titan-Version')
-      
-      if (stride !== '28') {
-        console.error('[V8] Invalid stride:', stride)
-        return false
-      }
-      
-      const compressed = await resp.arrayBuffer()
-      const snapshotBytes = compressed.byteLength
-      
-      // Decompress
-      const decompressStart = performance.now()
-      const decompressed = await decompressZstd(compressed)
-      const decompressMs = Math.round(performance.now() - decompressStart)
 
-      // Keep latest buffer for drawCount safety checks (and to prevent stride/count mismatches).
-      bufferDataRef.current = decompressed
-      
-      quantumStatsRef.current = {
-        assetCount: parseInt(assetCount || '0', 10),
-        stride: 28,
-        snapshotBytes,
-        decompressMs,
-        parseMs: 0,
-        fps: fpsRef.current.fps,
-        deltaQueueDepth: deltaQueueRef.current.length,
-        lastWSLagMs: 0
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`)
       }
-      
-      // Parse Vertex28
-      const parsed = parseVertex28(decompressed)
-      v8TypedArraysRef.current = parsed
-      
-      // Update WebGL buffers
-      const gl = glRef.current
-      if (gl && bufferRef.current && parsed.count > 0) {
-        gl.bindBuffer(gl.ARRAY_BUFFER, bufferRef.current)
-        gl.bufferData(gl.ARRAY_BUFFER, decompressed, gl.DYNAMIC_DRAW)
-        const err = gl.getError()
-        if (err !== gl.NO_ERROR) {
-          console.warn('[V8] gl.bufferData error', { err, bytes: decompressed.byteLength, count: parsed.count })
-          debugForceRef.current = true
-          setStats(prev => ({ ...prev, shaderLog: 'WebGL upload failed in V8 mode; forcing debug renderer.' }))
+
+      const stride = resp.headers.get('x-wsw-stride') ?? resp.headers.get('X-Vertex-Stride')
+      const fmt = resp.headers.get('x-wsw-format') ?? resp.headers.get('X-WSW-Format')
+      const contentEnc = (resp.headers.get('content-encoding') ?? '').toLowerCase()
+
+      if (stride !== '28') {
+        throw new Error(`Vertex28 contract violation: header stride=${stride ?? 'null'} (expected 28)`)
+      }
+      if (fmt && fmt.toLowerCase() !== 'vertex28') {
+        throw new Error(`Vertex28 contract violation: header format=${fmt} (expected vertex28)`)
+      }
+
+      const rawBuf = await resp.arrayBuffer()
+      const rawBytes = rawBuf.byteLength
+      const wantsZstd = v8Compression === 'zstd'
+      const serverZstd = contentEnc === 'zstd'
+
+      // Decompression policy (resilient):
+      // - Try zstd if either requested or server claims zstd.
+      // - Prefer decompressed buffer if it validates Vertex28.
+      // - Otherwise fall back to raw buffer if it validates Vertex28.
+      // - Fail only if neither validates Vertex28.
+      let buf: ArrayBuffer | null = null
+      let decompressMs = 0
+      let decompressed: ArrayBuffer | null = null
+
+      if (wantsZstd || serverZstd) {
+        const t0 = performance.now()
+        try {
+          decompressed = await decompressZstdArrayBuffer(rawBuf)
+        } catch (e) {
+          decompressed = null
         }
-        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+        decompressMs = Math.round(performance.now() - t0)
       }
-      
+
+      const rawOk = rawBuf.byteLength > 0 && (rawBuf.byteLength % VERTEX28_STRIDE === 0)
+      const decOk = !!decompressed && decompressed.byteLength > 0 && (decompressed.byteLength % VERTEX28_STRIDE === 0)
+
+      if (decOk) {
+        buf = decompressed as ArrayBuffer
+      } else if (rawOk) {
+        if (serverZstd) {
+          console.warn('[V8] content-encoding=zstd but decompression failed/invalid; using raw buffer', { rawBytes, decBytes: (decompressed?.byteLength ?? 0) })
+        }
+        buf = rawBuf
+        decompressMs = 0
+      } else {
+        throw new Error(`Vertex28 contract violation: rawBytes=${rawBuf.byteLength}, decBytes=${decompressed?.byteLength ?? 0}, wantsZstd=${wantsZstd}, serverZstd=${serverZstd}`)
+      }
+
+      validateVertex28Buffer(buf)
+
+      // Parse Vertex28 immediately after decompression
+      const parsed = parseVertex28(buf)
+
+      if (parsed.count <= 0) {
+        throw new Error('Parsed snapshot contains 0 points.')
+      }
+
+      // Update bounds (for shader normalization) BEFORE rendering
+      const b = computeBoundsFromPositions(parsed.positions, parsed.count)
+      boundsRef.current = {
+        ...boundsRef.current,
+        minX: b.minX,
+        maxX: b.maxX,
+        minY: b.minY,
+        maxY: b.maxY,
+        degenerate: b.degenerate
+      }
+
+      // Build PointData[] for picking/interaction
+      const dx = Math.max(1e-9, (boundsRef.current.maxX - boundsRef.current.minX))
+      const dy = Math.max(1e-9, (boundsRef.current.maxY - boundsRef.current.minY))
+
+      const pts: PointData[] = new Array(parsed.count)
+      for (let i = 0; i < parsed.count; i++) {
+        const x = parsed.positions[i * 3]
+        const y = parsed.positions[i * 3 + 1]
+        const z = parsed.positions[i * 3 + 2]
+
+        const x01 = (x - boundsRef.current.minX) / dx
+        const y01 = (y - boundsRef.current.minY) / dy
+
+        const symbol = symbolsMapRef.current.get(i) ?? `AST${String(i).padStart(6, '0')}`
+
+        pts[i] = {
+          index: i,
+          x01: Math.min(1, Math.max(0, x01)),
+          y01: Math.min(1, Math.max(0, y01)),
+          z,
+          risk: parsed.risk[i],
+          shock: parsed.shock[i],
+          trend: 0,
+          vital: 0,
+          macro: 0,
+          symbol,
+          assetId: i
+        }
+      }
+
+      // Upload buffer to GPU (MANDATORY)
+      if (g && vbo) {
+        g.bindBuffer(g.ARRAY_BUFFER, vbo)
+        g.bufferData(g.ARRAY_BUFFER, buf, g.DYNAMIC_DRAW)
+        g.bindBuffer(g.ARRAY_BUFFER, null)
+      } else {
+        console.warn('[V8] GL context or VBO missing; snapshot parsed but not uploaded to GPU.')
+      }
+
+      // Commit "last known good" data only AFTER success
+      bufferDataRef.current = buf
+      v8TypedArraysRef.current = parsed
+      pointsDataRef.current = pts
       vertexCountRef.current = parsed.count
-      
+
+      // HUD stats (V8)
+      quantumStatsRef.current.assetCount = parsed.count
+      quantumStatsRef.current.stride = VERTEX28_STRIDE
+      quantumStatsRef.current.snapshotBytes = buf.byteLength
+      quantumStatsRef.current.decompressMs = decompressMs
+      quantumStatsRef.current.deltaQueueDepth = deltaQueueRef.current.length
+      quantumStatsRef.current.fps = fpsRef.current.fps
+
       setStats(prev => ({
         ...prev,
         points: parsed.count,
-        bytes: decompressed.byteLength,
-        stride: 28,
+        bytes: buf.byteLength,
+        stride: VERTEX28_STRIDE,
         noData: false,
-        fetchMs: Math.round(performance.now() - fetchStart)
+        fetchMs: Math.round(performance.now() - fetchStart),
+        shaderLog: null
       }))
-      
+
       return true
     } catch (err: any) {
       if (err?.name === 'AbortError') return false
+
+      const msg = err instanceof Error ? err.message : String(err)
       console.error('[V8] fetchV8Snapshot failed:', err)
+
+      // Preserve last good VBO and typed arrays; only surface the error
+      setStats(prev => ({ ...prev, shaderLog: `[V8] snapshot error: ${msg}` }))
+
       return false
     }
   }
 
-  const fetchPoints = async (url: string, signal?: AbortSignal): Promise<ArrayBuffer | null> => {
-    try {
-      // Use relative path - Vite proxy handles routing to backend
-      // Dev-only instrumentation logs
-      if (import.meta.env.DEV) {
-        console.debug('[fetchPoints] url=', url)
-      }
-      
-      const resp = await fetch(url, { signal })
-      
-      // Handle HTTP 204 No Content explicitly
-      if (resp.status === 204) {
-        console.warn('[fetchPoints] 204 No Content (no universe data)')
-        setStats(prev => ({ ...prev, noData: true }))
-        return null // Sentinel: no data available
-      }
-      
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      
-      const ab = await resp.arrayBuffer()
-      
-      // Dev-only instrumentation: log response details (only for 200 OK)
-      if (import.meta.env.DEV && resp.status === 200 && resp.ok) {
-        const contentLength = resp.headers.get('content-length')
-        console.debug('[fetchPoints] status=200 content-length=', contentLength, 'arrayBuffer=', ab.byteLength)
-      }
-      
-      // Clear noData flag on successful data fetch
-      setStats(prev => ({ ...prev, noData: false }))
-      
-      await processPointsData(ab)
-      
-      return ab
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return null
-      console.error('fetchPoints failed:', err)
-      return null
-    }
-  }
+  // Route A: legacy fetchPoints removed
 
   const fetchSymbols = async (url: string, signal?: AbortSignal): Promise<any[]> => {
     try {
@@ -1070,10 +819,8 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
 
     let program: WebGLProgram
     try {
-      const vs = useV8Ref.current ? TITAN_V8_VERTEX_SHADER : TITAN_VERTEX_SHADER
-      const fs = useV8Ref.current
-        ? (typeof TITAN_V8_FRAGMENT_SHADER !== 'undefined' ? TITAN_V8_FRAGMENT_SHADER : TITAN_FRAGMENT_SHADER)
-        : TITAN_FRAGMENT_SHADER
+      const vs = TITAN_V8_VERTEX_SHADER
+      const fs = TITAN_V8_FRAGMENT_SHADER
       program = link(gl, vs, fs)
       programRef.current = program
       programLinkOkRef.current = true
@@ -1088,7 +835,7 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
     if (!useV8Ref.current) {
       let debugProgram: WebGLProgram
       try {
-        debugProgram = link(gl, DEBUG_VERTEX_SHADER, TITAN_FRAGMENT_SHADER)
+        debugProgram = link(gl, DEBUG_VERTEX_SHADER, TITAN_V8_FRAGMENT_SHADER)
         debugProgramRef.current = debugProgram
         debugProgramLinkOkRef.current = true
         setStats(prev => ({ ...prev, debugProgramLink: true }))
@@ -1105,7 +852,7 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
 
     if (enableSingularityRef.current) {
       try {
-        const singularityProgram = link(gl, TITAN_VERTEX_SHADER, SINGULARITY_FRAGMENT_SHADER)
+        const singularityProgram = link(gl, TITAN_V8_VERTEX_SHADER, SINGULARITY_FRAGMENT_SHADER)
         singularityProgramRef.current = singularityProgram
         console.debug("Shader Singularity program compiled")
       } catch (err) {
@@ -1131,83 +878,35 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo)
 
     // Fetch all attribute locations immediately after program linking
-    // V8 mode attributes
+    // V8 mode attributes (Route A)
     const aPosLoc = gl.getAttribLocation(program, 'a_position')
-    const aFidelityLoc = gl.getAttribLocation(program, 'a_fidelity')
-    const aTaxonomyLoc = gl.getAttribLocation(program, 'a_taxonomy')
+    const aRiskLoc = gl.getAttribLocation(program, 'a_risk')
+    const aShockLoc = gl.getAttribLocation(program, 'a_shock')
+    const aMortonLoc = gl.getAttribLocation(program, 'a_morton')
     const aMetaLoc = gl.getAttribLocation(program, 'a_meta')
-    const aSpinLoc = gl.getAttribLocation(program, 'a_spin')
     
-    // Legacy mode attributes
-    const aXLoc = gl.getAttribLocation(program, 'a_x')
-    const aYLoc = gl.getAttribLocation(program, 'a_y')
-    const aAttrLoc = gl.getAttribLocation(program, 'a_attr')
-    const aMetaLocLegacy = gl.getAttribLocation(program, 'a_meta')
-
-    // Validate critical attributes
-    if (useV8Ref.current) {
-      if (aPosLoc < 0) {
-        throw new Error("V8 shader missing required attrib a_position")
-      }
-      if (aTaxonomyLoc < 0) {
-        console.warn("[TitanCanvas] Attribute 'a_taxonomy' not found (may be optimized out)")
-      }
-      if (aMetaLoc < 0) {
-        console.warn("[TitanCanvas] Attribute 'a_meta' not found (may be optimized out)")
-      }
-    } else {
-      if (aXLoc < 0 || aYLoc < 0) {
-        const errMsg = "Critical attributes 'a_x' or 'a_y' not found in shader program"
-        console.error(`[TitanCanvas] ${errMsg}`)
-        setStats(prev => ({ ...prev, shaderLog: errMsg }))
-        return
-      }
-      if (aMetaLocLegacy < 0) {
-        console.warn("[TitanCanvas] Attribute 'a_meta' not found (may be optimized out)")
-      }
+    if (aPosLoc < 0) {
+      throw new Error("V8 shader missing required attrib a_position")
     }
 
-    // Bind attributes based on mode
-    if (useV8Ref.current) {
-      // V8: Vertex28 format attributes
-      if (aPosLoc >= 0) {
-        gl.enableVertexAttribArray(aPosLoc)
-        gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_X)
-      }
-      if (aFidelityLoc >= 0) {
-        gl.enableVertexAttribArray(aFidelityLoc)
-        gl.vertexAttribPointer(aFidelityLoc, 1, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_FIDELITY)
-      }
-      if (aTaxonomyLoc >= 0) {
-        gl.enableVertexAttribArray(aTaxonomyLoc)
-        gl.vertexAttribIPointer(aTaxonomyLoc, 1, gl.UNSIGNED_INT, VERTEX28_STRIDE, V28_OFF_TAXONOMY)
-      }
-      if (aMetaLoc >= 0) {
-        gl.enableVertexAttribArray(aMetaLoc)
-        gl.vertexAttribIPointer(aMetaLoc, 1, gl.UNSIGNED_INT, VERTEX28_STRIDE, V28_OFF_META)
-      }
-      if (aSpinLoc >= 0) {
-        gl.enableVertexAttribArray(aSpinLoc)
-        gl.vertexAttribPointer(aSpinLoc, 1, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_SPIN)
-      }
-    } else {
-      // Legacy: 12-byte stride attributes
-      if (aXLoc >= 0) {
-        gl.enableVertexAttribArray(aXLoc)
-        gl.vertexAttribIPointer(aXLoc, 1, gl.UNSIGNED_SHORT, STRIDE_BYTES, OFF_X)
-      }
-      if (aYLoc >= 0) {
-        gl.enableVertexAttribArray(aYLoc)
-        gl.vertexAttribIPointer(aYLoc, 1, gl.UNSIGNED_SHORT, STRIDE_BYTES, OFF_Y)
-      }
-      if (aAttrLoc >= 0) {
-        gl.enableVertexAttribArray(aAttrLoc)
-        gl.vertexAttribIPointer(aAttrLoc, 1, gl.UNSIGNED_INT, STRIDE_BYTES, OFF_ATTR)
-      }
-      if (aMetaLocLegacy >= 0) {
-        gl.enableVertexAttribArray(aMetaLocLegacy)
-        gl.vertexAttribIPointer(aMetaLocLegacy, 1, gl.UNSIGNED_INT, STRIDE_BYTES, OFF_META)
-      }
+    // Route A: Vertex28 format attributes
+    gl.enableVertexAttribArray(aPosLoc)
+    gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_X)
+    if (aRiskLoc >= 0) {
+      gl.enableVertexAttribArray(aRiskLoc)
+      gl.vertexAttribPointer(aRiskLoc, 1, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_RISK)
+    }
+    if (aShockLoc >= 0) {
+      gl.enableVertexAttribArray(aShockLoc)
+      gl.vertexAttribPointer(aShockLoc, 1, gl.FLOAT, false, VERTEX28_STRIDE, V28_OFF_SHOCK)
+    }
+    if (aMortonLoc >= 0) {
+      gl.enableVertexAttribArray(aMortonLoc)
+      gl.vertexAttribIPointer(aMortonLoc, 1, gl.UNSIGNED_INT, VERTEX28_STRIDE, V28_OFF_MORTON)
+    }
+    if (aMetaLoc >= 0) {
+      gl.enableVertexAttribArray(aMetaLoc)
+      gl.vertexAttribIPointer(aMetaLoc, 1, gl.UNSIGNED_INT, VERTEX28_STRIDE, V28_OFF_META)
     }
 
     gl.bindVertexArray(null)
@@ -1334,17 +1033,17 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
         g.useProgram(prog)
         g.bindVertexArray(vao)
 
-        const uPointSizeLoc = g.getUniformLocation(prog, 'u_pointSize')
+        const uPointSizeLoc = g.getUniformLocation(prog, 'u_pointSize') || g.getUniformLocation(prog, 'u_PointSize') || g.getUniformLocation(prog, 'u_point_size')
         const uTimeLoc = g.getUniformLocation(prog, 'u_time')
         const uModeLoc = g.getUniformLocation(prog, 'u_mode')
         const uZoomLoc = g.getUniformLocation(prog, 'u_zoom')
         const uPanLoc = g.getUniformLocation(prog, 'u_pan')
-        const uXyMinLoc = g.getUniformLocation(prog, 'u_xyMin')
-        const uXyMaxLoc = g.getUniformLocation(prog, 'u_xyMax')
+        const uXyMinLoc = g.getUniformLocation(prog, 'u_xyMin') || g.getUniformLocation(prog, 'u_xy_min')
+        const uXyMaxLoc = g.getUniformLocation(prog, 'u_xyMax') || g.getUniformLocation(prog, 'u_xy_max')
         const uRiskMinLoc = g.getUniformLocation(prog, 'u_riskMin')
         const uShockMinLoc = g.getUniformLocation(prog, 'u_shockMin')
         const uTrendMaskLoc = g.getUniformLocation(prog, 'u_trendMask')
-        const uGlobalShockFactorLoc = g.getUniformLocation(prog, 'u_GlobalShockFactor')
+        const uGlobalShockFactorLoc = g.getUniformLocation(prog, 'u_GlobalShockFactor') || g.getUniformLocation(prog, 'u_globalShockFactor') || g.getUniformLocation(prog, 'u_global_shock_factor')
 
         if (uPointSizeLoc) g.uniform1f(uPointSizeLoc, pointSizeRef.current)
         if (uTimeLoc) {
@@ -1366,20 +1065,23 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
         if (uShockMinLoc) g.uniform1f(uShockMinLoc, shockMin)
         if (uTrendMaskLoc) {
           let mask = 0
-          trendFilter.forEach(t => { mask |= (1 << t) })
+          trendFilter.forEach((t) => {
+            if (typeof t === 'number' && t >= 0 && t < 31) mask |= (1 << t)
+          })
+          if (mask === 0) mask = -1 // allow-all fallback
           g.uniform1i(uTrendMaskLoc, mask)
         }
         if (uGlobalShockFactorLoc) {
           g.uniform1f(uGlobalShockFactorLoc, globalShockFactorRef.current)
         }
 
-        const stride = useV8Ref.current ? VERTEX28_STRIDE : STRIDE_BYTES
+        const stride = VERTEX28_STRIDE
         const bufBytes = bufferDataRef.current?.byteLength ?? 0
         const maxCount = bufBytes > 0 ? Math.floor(bufBytes / stride) : vertexCountRef.current
         let drawCount = vertexCountRef.current
         if (drawCount > maxCount) {
           console.warn('[draw] clamping drawCount to buffer capacity', {
-            mode: useV8Ref.current ? 'v8' : 'legacy',
+            mode: 'v8',
             drawCount,
             maxCount,
             bufBytes,
@@ -1455,11 +1157,10 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
       if (programRef.current) gl.deleteProgram(programRef.current)
       if (debugProgramRef.current) gl.deleteProgram(debugProgramRef.current)
     }
-  }, [streamUrlBin, onAssetClick])
+  }, [onAssetClick])
 
   // --- DEFINITIVE POLLING: 5/10s, no overlap, no early start ---
   useEffect(() => {
-    if (!streamUrlBin) return
 
     const currentEpoch = ++pollEpochRef.current
     const effectivePollMs = Math.max(2000, pollMs ?? 2000)
@@ -1468,7 +1169,7 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
     // Arming delay: first poll cannot happen earlier than effectivePollMs from NOW
     const armAt = Date.now() + effectivePollMs
 
-    const symbolsUrl = streamUrlSymbols || null
+    const symbolsUrl = null
 
     const clearTimer = () => {
       if (pollTimerRef.current != null) {
@@ -1495,7 +1196,6 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
     const pollOnce = async () => {
       if (disposed || currentEpoch !== pollEpochRef.current) return
       if (inFlightRef.current) return
-      if (!streamUrlBin) return
 
       const now = Date.now()
 
@@ -1522,74 +1222,12 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
       lastStartMsRef.current = now
 
       try {
-        // V8 mode: use snapshot endpoint (check backoff first)
-        if (useV8Ref.current) {
-          const now = Date.now()
-          if (now < v8NextRetryAtRef.current) {
-            // backoff active -> use legacy for this tick
-            rebuildPipelineIfNeeded(false)
-            const result = await fetchPoints(streamUrlBin, ac.signal)
-            if (result === null) {
-              // fetchPoints returned null (could be 204 or error)
-            } else {
-              if (symbolsUrl && !symbolsLoadedRef.current) {
-                const symbols = await fetchSymbols(symbolsUrl, ac.signal)
-                const symbolStrings = symbols.map((item: any) => item.symbol || `ASSET-${item.id}`)
-                symbolsMapRef.current = new Map(symbolStrings.map((s: string, i: number) => [i, s]))
-                symbolsLoadedRef.current = true
-              }
-            }
-            return
-          }
-          
-          const ok = await fetchV8Snapshot(ac.signal)
-          if (ok === false) {
-            // immediate fallback for THIS SAME tick
-            rebuildPipelineIfNeeded(false)
-            const result = await fetchPoints(streamUrlBin, ac.signal)
-            if (result === null) {
-              // fetchPoints returned null (could be 204 or error)
-            } else {
-              if (symbolsUrl && !symbolsLoadedRef.current) {
-                const symbols = await fetchSymbols(symbolsUrl, ac.signal)
-                const symbolStrings = symbols.map((item: any) => item.symbol || `ASSET-${item.id}`)
-                symbolsMapRef.current = new Map(symbolStrings.map((s: string, i: number) => [i, s]))
-                symbolsLoadedRef.current = true
-              }
-            }
-            return
-          }
-          
-          // V8 snapshot loaded successfully
-          rebuildPipelineIfNeeded(true)
-          quantumStatsRef.current.fps = fpsRef.current.fps
-          // Clear backoff on success
-          v8NextRetryAtRef.current = 0
-          // Clear status message on success
-          setStats(prev => ({ ...prev, shaderLog: null }))
-        } else {
-          // Legacy mode: use points.bin (or V8 backoff fallback)
-          rebuildPipelineIfNeeded(false)
-          const result = await fetchPoints(streamUrlBin, ac.signal)
-          
-          // Handle 204 No Content: keep app online, preserve previous buffers
-          if (result === null) {
-            // fetchPoints returned null (could be 204 or error)
-            // If it was 204, stats.noData is already set by fetchPoints
-            // Do not clear points or set offline state
-            // Continue normal polling cadence
-          } else {
-            // Successful fetch with data: proceed normally
-            // ---- KEEP SYMBOL FETCH LOGIC (preserving existing 0-based indexing) ----
-            // Only fetch once per mount:
-            if (symbolsUrl && !symbolsLoadedRef.current) {
-              const symbols = await fetchSymbols(symbolsUrl, ac.signal)
-              const symbolStrings = symbols.map((item: any) => item.symbol || `ASSET-${item.id}`)
-              symbolsMapRef.current = new Map(symbolStrings.map((s: string, i: number) => [i, s]))
-              symbolsLoadedRef.current = true
-            }
-            // ---------------------------------------------------------
-          }
+        const ok = await fetchV8Snapshot(ac.signal)
+        if (ok && symbolsUrl && !symbolsLoadedRef.current) {
+          const symbols = await fetchSymbols(symbolsUrl, ac.signal)
+          const symbolStrings = symbols.map((item: any) => item.symbol || `ASSET-${item.id}`)
+          symbolsMapRef.current = new Map(symbolStrings.map((s: string, i: number) => [i, s]))
+          symbolsLoadedRef.current = true
         }
       } catch (e: any) {
         if (e?.name !== 'AbortError') console.error('[TitanPoll] failed', e)
@@ -1618,39 +1256,67 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
       inFlightRef.current = false
       lastStartMsRef.current = 0 // CRITICAL reset to avoid timing inheritance
     }
-  }, [streamUrlBin, streamUrlSymbols, pollMs])
+  }, [pollMs])
 
   // V8: WebSocket delta stream (10Hz)
   useEffect(() => {
     if (!useV8Ref.current) return
     
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/universe/v8/stream`
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const wsUrl = `${proto}://${window.location.host}/api/universe/v8/stream`
     
     let ws: WebSocket | null = null
-    let reconnectTimeout: number | null = null
     
     const connect = () => {
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/2c312865-94f7-427e-905b-dc7584b4541a', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: 'debug-session',
+            runId: 'run1',
+            hypothesisId: 'H4',
+            location: 'frontend/src/components/TitanCanvas.tsx:ws',
+            message: 'ws_connect_attempt',
+            data: { wsUrl },
+            timestamp: Date.now()
+          })
+        }).catch(() => {})
+        // #endregion agent log
         ws = new WebSocket(wsUrl)
         ws.binaryType = 'arraybuffer'
         
         ws.onopen = () => {
           console.log('[V8] WebSocket connected')
           quantumStatsRef.current.lastWSLagMs = 0
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/2c312865-94f7-427e-905b-dc7584b4541a', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'H4',
+              location: 'frontend/src/components/TitanCanvas.tsx:ws',
+              message: 'ws_open',
+              data: { wsUrl },
+              timestamp: Date.now()
+            })
+          }).catch(() => {})
+          // #endregion agent log
         }
         
         ws.onmessage = async (event) => {
           const receiveStart = performance.now()
           try {
-            // Decompress Zstd
-            const compressed = event.data as ArrayBuffer
-            const decompressed = await decompressZstd(compressed)
-            
-            // Decode MessagePack (simplified - assume it's a delta array)
-            // For now, queue for processing in render loop
-            deltaQueueRef.current.push(decompressed)
-            quantumStatsRef.current.deltaQueueDepth = deltaQueueRef.current.length
+            // Route A (minimal stream): JSON heartbeat/keepalive.
+            if (typeof event.data === 'string') {
+              // keepalive only
+              quantumStatsRef.current.lastWSLagMs = Math.round(performance.now() - receiveStart)
+              return
+            }
+            // Ignore binary until delta protocol is implemented.
             quantumStatsRef.current.lastWSLagMs = Math.round(performance.now() - receiveStart)
           } catch (e) {
             console.error('[V8] WebSocket message processing failed:', e)
@@ -1659,24 +1325,51 @@ export const TitanCanvas = forwardRef<TitanCanvasRef, TitanCanvasProps>(({
         
         ws.onerror = (err) => {
           console.error('[V8] WebSocket error:', err)
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/2c312865-94f7-427e-905b-dc7584b4541a', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'H4',
+              location: 'frontend/src/components/TitanCanvas.tsx:ws',
+              message: 'ws_error',
+              data: { wsUrl },
+              timestamp: Date.now()
+            })
+          }).catch(() => {})
+          // #endregion agent log
         }
         
         ws.onclose = () => {
-          console.log('[V8] WebSocket closed, reconnecting...')
-          reconnectTimeout = window.setTimeout(connect, 3000)
+          console.log('[V8] WebSocket closed')
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/2c312865-94f7-427e-905b-dc7584b4541a', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: 'debug-session',
+              runId: 'run1',
+              hypothesisId: 'H4',
+              location: 'frontend/src/components/TitanCanvas.tsx:ws',
+              message: 'ws_close',
+              data: { wsUrl },
+              timestamp: Date.now()
+            })
+          }).catch(() => {})
+          // #endregion agent log
         }
         
         wsRef.current = ws
       } catch (e) {
         console.error('[V8] WebSocket connection failed:', e)
-        reconnectTimeout = window.setTimeout(connect, 5000)
       }
     }
     
     connect()
     
     return () => {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout)
       if (ws) {
         ws.close()
         wsRef.current = null

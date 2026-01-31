@@ -6,10 +6,16 @@ import pytest
 from typing import Generator
 from fastapi.testclient import TestClient
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from main import app
 from services.rbac_service import require_role
 from api.auth import get_current_user
-
 
 @pytest.fixture(scope="module")
 def client() -> Generator[TestClient, None, None]:

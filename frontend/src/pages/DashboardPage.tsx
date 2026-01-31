@@ -78,7 +78,7 @@ export default function DashboardPage(){
     setRiskSummaryLoading(true)
     setRiskSummaryError(null)
     try{
-      const data = await fetchApiJson<RiskSummarySqlResponse>('/risk/summary_sql') // endpoint: /api/risk/summary_sql
+      const data = await fetchApiJson<RiskSummarySqlResponse>('/risk/summary_sql')
       setRiskSummary(data)
     }catch(e:any){
       setRiskSummaryError(e?.message ?? 'Failed to load')

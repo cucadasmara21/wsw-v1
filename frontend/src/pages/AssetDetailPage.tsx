@@ -24,12 +24,12 @@ export function AssetDetailPage() {
       if (!id) return
       
       try {
-        const data = await apiClient.get<AssetDetail>(`/api/assets/${id}`)
+        const data = await apiClient.get<AssetDetail>(`/assets/${id}`)
         setAsset(data)
         
         // Try to load market snapshot
         try {
-          const market = await apiClient.get<MarketSnapshot>(`/api/market/snapshot?symbol=${data.symbol}`)
+          const market = await apiClient.get<MarketSnapshot>(`/market/snapshot?symbol=${data.symbol}`)
           setSnapshot(market)
         } catch (err: any) {
           if (err?.error?.code === 'dependency_missing') {

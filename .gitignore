@@ -65,3 +65,11 @@ snap*.bin
 snapshot*.zst
 tree_full.txt
 tree_*.txt
+
+# --- Generated artifacts / local-only ---
+_hot_files.txt
+_hot_pack.zip
+WIP_*.diff
+WIP_*.txt
+docs_git_status_before.txt
+Contexto WSW1/

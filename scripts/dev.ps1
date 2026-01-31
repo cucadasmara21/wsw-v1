@@ -11,6 +11,51 @@ Set-Location $ROOT_DIR
 Write-Host "🚀 WallStreetWar Dev Environment - Windows" -ForegroundColor Cyan
 Write-Host ""
 
+# Ensure Docker Compose Postgres is running (repo-root docker-compose.yml)
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host "❌ Docker not found in PATH. Install Docker Desktop and try again." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "🐳 Starting PostgreSQL via docker compose..." -ForegroundColor Cyan
+# If an old container_name-based instance exists, remove it to avoid conflicts.
+try {
+    $names = docker ps -a --format "{{.Names}}" 2>$null
+    if ($names -and ($names -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -eq "wsw-postgres" })) {
+        Write-Host "ℹ️  Removing legacy container 'wsw-postgres' to avoid name/port conflicts..." -ForegroundColor Yellow
+        docker rm -f wsw-postgres | Out-Host
+    }
+} catch { }
+
+docker compose up -d --remove-orphans | Out-Host
+
+Write-Host "⏳ Waiting for postgres health..." -ForegroundColor Cyan
+$deadline = (Get-Date).AddSeconds(90)
+while ((Get-Date) -lt $deadline) {
+    try {
+        $cid = (docker compose ps -q wsw-postgres 2>$null).Trim()
+        if (-not $cid) { Start-Sleep -Seconds 2; continue }
+        $health = (docker inspect --format='{{.State.Health.Status}}' $cid 2>$null)
+        if ($health -eq "healthy") { break }
+    } catch { }
+    Start-Sleep -Seconds 2
+}
+$cid = (docker compose ps -q wsw-postgres 2>$null).Trim()
+$health = ""
+if ($cid) { $health = (docker inspect --format='{{.State.Health.Status}}' $cid 2>$null) }
+if ($health -ne "healthy") {
+    Write-Host "❌ Postgres container not healthy. Check logs:" -ForegroundColor Red
+    Write-Host "   docker compose logs -f wsw-postgres" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "✅ Postgres healthy (wsw-postgres)" -ForegroundColor Green
+
+# Force deterministic local DSN for backend (host connects to container via published port)
+$dsn = "postgresql://postgres:postgres@127.0.0.1:5432/wsw_db"
+$env:DATABASE_URL = $dsn
+$env:DATABASE_DSN_ASYNC = $dsn
+$env:ENABLE_TIMESCALE = "false"
+
 # Check Python
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Host "❌ Python not found in PATH. Install Python 3.12+ and try again." -ForegroundColor Red
@@ -106,15 +151,26 @@ Write-Host ""
 Write-Host "🚀 Starting services..." -ForegroundColor Cyan
 Write-Host "   Backend:  http://localhost:$PORT" -ForegroundColor Green
 Write-Host "   Frontend: http://localhost:$VITE_PORT" -ForegroundColor Green
+Write-Host "   V8 Health: http://localhost:$PORT/api/universe/v8/health" -ForegroundColor Green
 Write-Host ""
 Write-Host "Press Ctrl+C to stop all services" -ForegroundColor Yellow
 Write-Host ""
 
 # Start backend in new window for easier visibility
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$ROOT_DIR'; .\.venv\Scripts\Activate.ps1; python -m uvicorn main:app --host 127.0.0.1 --port $PORT --reload"
+$backendCmd = "cd '$ROOT_DIR'; `$env:DATABASE_URL='$dsn'; `$env:DATABASE_DSN_ASYNC='$dsn'; .\.venv\Scripts\Activate.ps1; python -m uvicorn main:app --host 127.0.0.1 --port $PORT --reload"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCmd
 
-# Wait for backend
-Start-Sleep -Seconds 4
+# Wait for backend health (up to 60s)
+Write-Host "⏳ Waiting for backend http://127.0.0.1:$PORT/health ..." -ForegroundColor Cyan
+$backendDeadline = (Get-Date).AddSeconds(60)
+while ((Get-Date) -lt $backendDeadline) {
+    try {
+        $null = Invoke-RestMethod -Uri "http://127.0.0.1:$PORT/health" -TimeoutSec 2
+        break
+    } catch {
+        Start-Sleep -Seconds 2
+    }
+}
 
 # Start frontend in new window
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$ROOT_DIR\frontend'; npm run dev -- --host 127.0.0.1 --port $VITE_PORT"
@@ -130,6 +186,14 @@ try {
     Write-Host "⚠️  Backend health check failed. Check the backend window for errors." -ForegroundColor Yellow
 }
 
+try {
+    $v8 = Invoke-RestMethod -Uri "http://127.0.0.1:$PORT/api/universe/v8/health" -TimeoutSec 5
+    Write-Host "✅ V8 health endpoint reachable" -ForegroundColor Green
+    Write-Host "   status=$($v8.status) scheme=$($v8.database_url_scheme) v8_ready=$($v8.v8_ready)" -ForegroundColor Gray
+} catch {
+    Write-Host "⚠️  V8 health check failed. Backend may still be starting." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "🎉 Development environment ready!" -ForegroundColor Green
@@ -139,5 +203,9 @@ Write-Host "Open in browser:" -ForegroundColor White
 Write-Host "  Frontend: http://localhost:$VITE_PORT" -ForegroundColor Cyan
 Write-Host "  Backend:  http://localhost:$PORT/docs" -ForegroundColor Cyan
 Write-Host "  Health:   http://localhost:$PORT/health" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Verify (PowerShell):" -ForegroundColor White
+Write-Host "  curl.exe -i http://127.0.0.1:$PORT/api/universe/v8/health" -ForegroundColor Gray
+Write-Host "  curl.exe -I \"http://127.0.0.1:$PORT/api/universe/v8/snapshot?format=vertex28&compression=zstd\"" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Close the PowerShell windows to stop services" -ForegroundColor Yellow

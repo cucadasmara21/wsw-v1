@@ -14,5 +14,16 @@ if (-not $env:DATABASE_DSN_ASYNC) {
 Write-Host "[backend] DATABASE_URL scheme set (value redacted)"
 Write-Host "[backend] Starting uvicorn on 127.0.0.1:8000"
 
+# Route A: fail-fast if port is already bound (prevents multiple backend instances).
+try {
+  $existing = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+  if ($existing) {
+    $pids = ($existing | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique) -join ", "
+    throw "Port 8000 is already in use (PIDs: $pids). Run: .\scripts\kill-ports.ps1 -Yes"
+  }
+} catch {
+  throw
+}
+
 python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 

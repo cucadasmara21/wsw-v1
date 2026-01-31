@@ -4,6 +4,50 @@
 
 ---
 
+## Quick Start (Windows PowerShell)
+
+### Prerequisites
+- Python 3.12+ with virtual environment
+- Node.js 18+
+- PostgreSQL running (Docker or local)
+
+### One command (starts Postgres + backend + frontend)
+```powershell
+# From repo root
+.\scripts\dev.ps1
+```
+
+This script:
+- Runs `docker compose up -d` (starts `wsw-postgres`)
+- Waits for Postgres healthcheck
+- Forces `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/wsw_db` for the backend process
+- Starts backend on `127.0.0.1:8000` (reload)
+- Starts frontend on `127.0.0.1:5173` (Vite proxy to backend)
+
+### Verification
+```powershell
+# Backend health
+curl.exe -i http://localhost:8000/health
+
+# V8 health (must show postgresql scheme and v8_ready=true)
+curl.exe -i http://localhost:8000/api/universe/v8/health
+
+# V8 snapshot (should return 200/204, not 503)
+curl.exe -i "http://localhost:8000/api/universe/v8/snapshot?format=vertex28&compression=zstd"
+```
+
+If you want to run services manually (PowerShell):
+```powershell
+docker compose -f .\docker-compose.yml up -d
+$env:DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/wsw_db"
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+# Separate terminal:
+cd .\frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+---
+
 ## 🚀 Quickstart (Un Comando)
 
 ### Windows (PowerShell)
@@ -221,7 +265,7 @@ python init_db.py
   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
   
   # Frontend
-  cd frontend && npm run dev -- --host 0.0.0.0 --port 5173
+  npm run dev
   ```
 
 ---
@@ -344,11 +388,9 @@ SCHEDULER_BATCH_SIZE=50
 Con esto, el backend ejecutará cada N minutos la recomputación de métricas y generación de alertas para un subconjunto de activos.
 ```
 
----
-
 ## 🧪 Testing Manual
 
-Después de iniciar con `./scripts/dev.sh` o `.\scripts\dev.ps1`:
+Después de iniciar con `.\scripts\run-backend.ps1` y `.\scripts\run-frontend.ps1`:
 
 ```bash
 # 1. Health check
@@ -369,6 +411,65 @@ curl http://localhost:8000/api/alerts
 
 # 4. Ver documentación interactiva
 # Abrir en navegador: http://localhost:8000/docs
+```
+
+## TITAN V8 Quantum Seeding
+
+Para poblar `universe_assets` con datos sintéticos:
+
+### Prerrequisitos
+- PostgreSQL en Docker (o local) - **REQUIRED for V8**
+- Variables de entorno configuradas (`.env` en repo root)
+- Verificar V8 readiness:
+  ```powershell
+  # Check V8 health (must show database_url_scheme: "postgresql")
+  curl.exe -i http://localhost:8000/api/universe/v8/health
+  
+  # Test V8 snapshot (should return 200/204, not 503)
+  curl.exe -i "http://localhost:8000/api/universe/v8/snapshot?format=vertex28&compression=zstd"
+  ```
+
+### Windows (PowerShell) - Runbook Completo
+
+```powershell
+# 1. Set DSN asyncpg (ambos para compatibilidad)
+$env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/wsw_db"
+$env:DATABASE_DSN_ASYNC="postgresql://postgres:postgres@localhost:5432/wsw_db"
+
+# 2. Bootstrap legacy (crea source_assets + prices)
+python scripts/bootstrap_legacy.py --n 10000 --days 30 --reset
+
+# 3. Aplicar SQL materialization (auto-heal)
+.\scripts\apply_quantum_sql.ps1
+
+# 4. Seed V8 (concurrencia 4, batch 2000, con verificación)
+python backend/scripts/seed_universe_v8.py --target 10000 --concurrency 4 --batch 2000 --verify
+```
+
+### Linux / macOS
+
+```bash
+# 1. Set DSN asyncpg
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/wsw_db"
+export DATABASE_DSN_ASYNC="postgresql://postgres:postgres@localhost:5432/wsw_db"
+
+# 2. Bootstrap legacy
+python scripts/bootstrap_legacy.py --n 10000 --days 30 --reset
+
+# 3. Aplicar SQL materialization
+python scripts/db_apply_sql.py quantum_materialization.sql
+
+# 4. Seed V8
+python backend/scripts/seed_universe_v8.py --target 10000 --concurrency 4 --batch 2000 --verify
+```
+
+### Validación
+
+```bash
+# Verificar counts
+docker exec -it wsw-postgres psql -U postgres -d wsw_db -c "SELECT COUNT(*) FROM source_assets;"
+docker exec -it wsw-postgres psql -U postgres -d wsw_db -c "SELECT COUNT(*) FROM universe_assets;"
+docker exec -it wsw-postgres psql -U postgres -d wsw_db -c "SELECT MIN(octet_length(vertex_buffer)), MAX(octet_length(vertex_buffer)) FROM universe_assets;"
 ```
 
 ---

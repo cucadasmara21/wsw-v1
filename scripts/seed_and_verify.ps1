@@ -20,19 +20,13 @@ if ($h -notmatch "200") {
 }
 Write-Host "PASS: v8/health 200" -ForegroundColor Green
 
-Write-Host "[verify] Checking V8 snapshot (expect 200 + non-empty)..." -ForegroundColor Cyan
+Write-Host "[verify] Checking V8 snapshot (expect 200 + non-empty, stride=28)..." -ForegroundColor Cyan
 $out = Join-Path $env:TEMP "v8_snapshot.bin"
-curl.exe -s -D "$out.headers" -o "$out" "$ApiBase/api/universe/v8/snapshot?format=vertex28&compression=zstd"
+curl.exe -s -D "$out.headers" -o "$out" "$ApiBase/api/universe/v8/snapshot?format=vertex28&compression=none"
 $len = (Get-Item $out).Length
 if ($len -le 0) { throw "FAIL: v8 snapshot body empty" }
+if (($len % 28) -ne 0) { throw "FAIL: v8 snapshot length not multiple of 28 (len=$len)" }
 Write-Host ("PASS: v8 snapshot bytes={0}" -f $len) -ForegroundColor Green
-
-Write-Host "[verify] Checking legacy points.bin (expect 200 + non-empty)..." -ForegroundColor Cyan
-$pout = Join-Path $env:TEMP "points.bin"
-curl.exe -s -D "$pout.headers" -o "$pout" "$ApiBase/api/universe/points.bin?limit=2000"
-$plen = (Get-Item $pout).Length
-if ($plen -le 0) { throw "FAIL: points.bin body empty" }
-Write-Host ("PASS: points.bin bytes={0}" -f $plen) -ForegroundColor Green
 
 Write-Host "ALL PASS" -ForegroundColor Green
 

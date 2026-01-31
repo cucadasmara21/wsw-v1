@@ -2,6 +2,15 @@
 Consolidación única de conexiones a bases de datos con fallbacks para Replit
 SQLAlchemy 2.x compatible con text() para queries raw
 TIMESCALEDB:  optional, explicit ENABLE_TIMESCALE flag
+
+Route A (TITAN V8) invariants:
+- PostgreSQL only (fail-fast if unreachable; see `config.py` + `main.py` lifespan gate).
+- Vertex28 binary contract only (stride=28 bytes per point, stored in `public.universe_assets.vertex_buffer`).
+- Taxonomy/meta fields are BIGINT in SQL; when packing to uint32, mask with & 0xFFFFFFFF.
+
+Validation (DoD snippets):
+- psql: SELECT to_regclass('public._stg_universe_assets'), to_regclass('public.universe_assets'), to_regclass('public.universe_snapshot_v8');
+- psql: SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='_stg_universe_assets' AND column_name IN ('taxonomy32','meta32');
 """
 import logging
 from contextlib import contextmanager
@@ -29,18 +38,14 @@ from backend.db.dsn import get_sqlalchemy_url
 
 logger = logging.getLogger(__name__)
 
-# ==================== POSTGRESQL/SQLITE ====================
+# ==================== POSTGRESQL (Route A only) ====================
 
-engine_kwargs = {}
-if settings.USE_SQLITE:
-    engine_kwargs = {"connect_args": {"check_same_thread": False}}
-else:
-    engine_kwargs = {
-        "pool_pre_ping": True,
-        "pool_recycle": 300,
-        "pool_size":  5,
-        "max_overflow":  10
-    }
+engine_kwargs = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+    "pool_size": 5,
+    "max_overflow": 10,
+}
 
 # Ensure DSN normalization is the single source of truth.
 engine = create_engine(get_sqlalchemy_url(default=settings.DATABASE_URL), **engine_kwargs)
@@ -57,67 +62,204 @@ def ensure_v8_schema() -> None:
 
     IMPORTANT:
     - Runs in isolated transaction scopes (engine.begin()) so failures never poison pooled connections.
-    - Handles the case where a legacy *table* named public.assets already exists by renaming it
-      to public.assets_legacy and then creating a compatibility VIEW public.assets backed by
-      public.universe_assets.
+    - Route A: PostgreSQL-only + Vertex28.
+    - Route A `public.assets` is a stable *VIEW* sourced from `public.source_assets` (canonical ingestion layer),
+      not the legacy ORM table `assets`.
+
+    Validation (DoD snippets):
+    - psql: SELECT COUNT(*) FROM public.source_assets; SELECT COUNT(*) FROM public.universe_assets;
+    - psql: SELECT MIN(octet_length(vertex_buffer)), MAX(octet_length(vertex_buffer)) FROM public.universe_assets;
     """
-    if settings.USE_SQLITE:
-        return
+    # 0) Extensions required by schema defaults (gen_random_uuid()).
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
 
-    # 0) If public.universe_assets is missing but public.assets exists, canonicalize by VIEW:
-    #     public.universe_assets -> public.assets
-    # This avoids split-brain naming across the codebase while preserving existing data.
+    # 1) Canonical table + required columns
+    with engine.begin() as conn:
+        # Optional upstream source layer. Route A seeders may synthesize this table
+        # so downstream checks and other tooling remain deterministic.
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS public.source_assets (
+                  asset_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                  id uuid,
+                  symbol text UNIQUE NOT NULL,
+                  sector text,
+                  x real,
+                  y real,
+                  z real,
+                  meta32 bigint,
+                  titan_taxonomy32 bigint
+                );
+                """
+            )
+        )
+        # Ensure Route A join keys exist (DoD expects source_assets.id).
+        conn.execute(text("ALTER TABLE public.source_assets ADD COLUMN IF NOT EXISTS id uuid;"))
+        conn.execute(text("UPDATE public.source_assets SET id = gen_random_uuid() WHERE id IS NULL;"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_source_assets_id ON public.source_assets(id);"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_source_assets_symbol ON public.source_assets(symbol);"))
+
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS public.universe_assets (
+                  asset_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                  source_id uuid,
+                  symbol text UNIQUE,
+                  sector text,
+                  morton_code bigint,
+                  taxonomy32 bigint NOT NULL DEFAULT 0,
+                  meta32 bigint NOT NULL DEFAULT 0,
+                  x real,
+                  y real,
+                  z real,
+                  fidelity_score real,
+                  spin real,
+                  vertex_buffer bytea,
+                  governance_status text NOT NULL DEFAULT 'PROVISIONAL',
+                  last_quantum_update timestamptz NOT NULL DEFAULT now()
+                );
+                """
+            )
+        )
+        # Route A join key (DoD expects universe_assets.source_id).
+        conn.execute(text("ALTER TABLE public.universe_assets ADD COLUMN IF NOT EXISTS source_id uuid;"))
+
+        # If an older schema created taxonomy32/meta32 as integer, upgrade to bigint.
+        # Drop dependent MV first to avoid ALTER TYPE failures.
+        conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;"))
+        conn.execute(
+            text(
+                """
+                DO $$
+                DECLARE
+                  t_tax text;
+                  t_meta text;
+                BEGIN
+                  SELECT data_type INTO t_tax
+                  FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='universe_assets' AND column_name='taxonomy32';
+
+                  IF t_tax IS NOT NULL AND t_tax <> 'bigint' THEN
+                    EXECUTE 'ALTER TABLE public.universe_assets ALTER COLUMN taxonomy32 TYPE bigint USING taxonomy32::bigint';
+                  END IF;
+
+                  SELECT data_type INTO t_meta
+                  FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='universe_assets' AND column_name='meta32';
+
+                  IF t_meta IS NOT NULL AND t_meta <> 'bigint' THEN
+                    EXECUTE 'ALTER TABLE public.universe_assets ALTER COLUMN meta32 TYPE bigint USING meta32::bigint';
+                  END IF;
+                END $$;
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_morton ON public.universe_assets(morton_code);"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_sector ON public.universe_assets(sector);"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_source_id ON public.universe_assets(source_id);"))
+
+        # Route A staging table (required by runbooks + deterministic seeder).
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS public._stg_universe_assets (
+                  asset_id uuid,
+                  source_id uuid,
+                  symbol text,
+                  sector text,
+                  morton_code bigint,
+                  taxonomy32 bigint NOT NULL,
+                  meta32 bigint NOT NULL,
+                  x real,
+                  y real,
+                  z real,
+                  risk real,
+                  shock real,
+                  vertex_buffer bytea
+                );
+                """
+            )
+        )
+        # Ensure columns exist even if table pre-existed (Route A)
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS asset_id uuid;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS source_id uuid;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS symbol text;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS sector text;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS morton_code bigint;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS taxonomy32 bigint;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS meta32 bigint;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS x real;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS y real;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS z real;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS risk real;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS shock real;"))
+        conn.execute(text("ALTER TABLE public._stg_universe_assets ADD COLUMN IF NOT EXISTS vertex_buffer bytea;"))
+        # Enforce UNIQUE(symbol) at the index level (idempotent repair from older non-unique indexes).
+        conn.execute(text("DROP INDEX IF EXISTS public.ix__stg_universe_assets_symbol;"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux__stg_universe_assets_symbol ON public._stg_universe_assets(symbol);"))
+
+        # Stable Route A assets view (ingestion truth).
+        # NOTE: this is a VIEW, not the legacy ORM table `assets`.
+        conn.execute(
+            text(
+                """
+                CREATE OR REPLACE VIEW public.assets AS
+                SELECT
+                  sa.asset_id,
+                  sa.id AS source_id,
+                  sa.symbol,
+                  COALESCE(NULLIF(btrim(sa.symbol), ''), 'UNKNOWN') AS name,
+                  sa.sector,
+                  NULL::text AS industry,
+                  COALESCE(sa.titan_taxonomy32, 0)::bigint AS taxonomy32,
+                  COALESCE(sa.meta32, 0)::bigint AS meta32
+                FROM public.source_assets sa;
+                """
+            )
+        )
+
+        logger.info("✅ Ensured Route A canonical schema objects (source_assets/universe_assets/_stg_universe_assets/assets view)")
+
+    # 2) Best-effort repair: keep source_assets and universe_assets joinable by symbol.
     try:
         with engine.begin() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
-            has_universe = bool(conn.execute(text("SELECT to_regclass('public.universe_assets') IS NOT NULL")).scalar())
-            has_assets = bool(conn.execute(text("SELECT to_regclass('public.assets') IS NOT NULL")).scalar())
-            if not has_universe and has_assets:
-                conn.execute(text("CREATE OR REPLACE VIEW public.universe_assets AS SELECT * FROM public.assets;"))
-                logger.info("✅ Created view public.universe_assets -> public.assets (canonical bridge)")
-                return
-    except Exception as e:
-        logger.warning(f"⚠️ Could not canonicalize universe_assets via assets view: {type(e).__name__}: {e}")
-
-    # 1) Canonical table + required columns (when no legacy assets table exists)
-    try:
-        with engine.begin() as conn:
+            # Backfill source_assets from universe_assets if needed.
             conn.execute(
                 text(
                     """
-                    CREATE TABLE IF NOT EXISTS public.universe_assets (
-                      asset_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                      symbol text UNIQUE,
-                      sector text,
-                      morton_code bigint,
-                      taxonomy32 bigint,
-                      meta32 bigint,
-                      x real,
-                      y real,
-                      z real,
-                      fidelity_score real,
-                      spin real,
-                      vertex_buffer bytea,
-                      governance_status text NOT NULL DEFAULT 'PROVISIONAL',
-                      last_quantum_update timestamptz NOT NULL DEFAULT now()
-                    );
+                    INSERT INTO public.source_assets (symbol, sector, x, y, z, meta32, titan_taxonomy32)
+                    SELECT DISTINCT
+                      ua.symbol,
+                      ua.sector,
+                      ua.x, ua.y, ua.z,
+                      ua.meta32,
+                      ua.taxonomy32
+                    FROM public.universe_assets ua
+                    WHERE ua.symbol IS NOT NULL AND ua.symbol <> ''
+                    ON CONFLICT (symbol) DO UPDATE SET
+                      sector=EXCLUDED.sector,
+                      x=EXCLUDED.x, y=EXCLUDED.y, z=EXCLUDED.z,
+                      meta32=EXCLUDED.meta32,
+                      titan_taxonomy32=EXCLUDED.titan_taxonomy32;
                     """
                 )
             )
-            # If an older schema created taxonomy32/meta32 as integer, upgrade to bigint.
-            # Drop dependent view/MV first to avoid ALTER TYPE failures.
-            conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-            conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;"))
-            conn.execute(text("ALTER TABLE public.universe_assets ALTER COLUMN taxonomy32 TYPE bigint USING taxonomy32::bigint;"))
-            conn.execute(text("ALTER TABLE public.universe_assets ALTER COLUMN meta32 TYPE bigint USING meta32::bigint;"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_morton ON public.universe_assets(morton_code);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_universe_assets_sector ON public.universe_assets(sector);"))
-            # Compatibility view for any legacy callers.
-            conn.execute(text("CREATE OR REPLACE VIEW public.assets AS SELECT * FROM public.universe_assets;"))
-            logger.info("✅ Ensured table public.universe_assets (canonical)")
+            conn.execute(text("UPDATE public.source_assets SET id = gen_random_uuid() WHERE id IS NULL;"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE public.universe_assets ua
+                    SET source_id = sa.id
+                    FROM public.source_assets sa
+                    WHERE ua.source_id IS NULL AND ua.symbol = sa.symbol;
+                    """
+                )
+            )
     except Exception as e:
-        logger.warning(f"⚠️ Could not ensure public.universe_assets: {type(e).__name__}: {e}")
-        return
+        logger.warning("⚠️ Route A join repair skipped: %s: %s", type(e).__name__, e)
 
     # 3) Optional MV for V8 snapshots
     try:
@@ -151,8 +293,6 @@ def ensure_min_universe_seed(min_rows: int = 2000) -> int:
     - If public.universe_assets has 0 rows, inserts a deterministic synthetic universe (min_rows)
     Returns the resulting rowcount (best effort).
     """
-    if settings.USE_SQLITE:
-        return 0
     try:
         ensure_v8_schema()
     except Exception:
@@ -282,17 +422,16 @@ def init_database() -> bool:
     Inicializar base de datos (crear tablas si no existen)
     TIMESCALEDB: try/except per tabla, no crash si falla
     """
-    try: 
-        # Crear todas las tablas
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Tablas creadas/verificadas")
+    try:
+        # Route A: avoid ORM auto-DDL (can conflict with Route A views and cause index duplication issues).
+        # Canonical DDL is managed explicitly in ensure_v8_schema().
 
         # Postgres-first bootstrap for TITAN V8 canonical objects (idempotent).
         # Use isolated transactions to avoid poisoned pooled connections.
         ensure_v8_schema()
 
         # ==================== TIMESCALEDB ====================
-        if settings.ENABLE_TIMESCALE and not settings.USE_SQLITE: 
+        if settings.ENABLE_TIMESCALE:
             logger.info("🔧 Habilitando TimescaleDB...")
 
             # Crear extensión
@@ -334,57 +473,13 @@ def init_database() -> bool:
             except Exception as e:
                 logger.warning(f"⚠️  risk_metrics error:  {e}")
         else:
-            if settings.ENABLE_TIMESCALE: 
-                logger.info("ℹ️  TimescaleDB disabled (SQLite detected)")
-            else:
-                logger.info("ℹ️  TimescaleDB disabled (ENABLE_TIMESCALE=false)")
+            logger.info("ℹ️  TimescaleDB disabled (ENABLE_TIMESCALE=false)")
 
-        # Ensure risk_snapshots table exists (schema used by MVP risk vector)
-        # IMPORTANT: this must be dialect-safe (SQLite vs PostgreSQL).
+        # Ensure risk_snapshots table exists (PostgreSQL only in Route A)
         try:
-            with engine.connect() as conn:
-                dialect = engine.dialect.name
-                if dialect == "sqlite":
-                    # SQLite-only DDL (AUTOINCREMENT + PRAGMA) must never run on Postgres.
-                    conn.execute(text("""
-                        CREATE TABLE IF NOT EXISTS risk_snapshots (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            ts TEXT NOT NULL,
-                            asset_id TEXT,
-                            price_risk REAL,
-                            liq_risk REAL,
-                            fund_risk REAL,
-                            cp_risk REAL,
-                            regime_risk REAL,
-                            cri REAL,
-                            model_version VARCHAR(32)
-                        );
-                    """))
-                    cols = conn.execute(text("PRAGMA table_info(risk_snapshots)")).mappings().all()
-                    existing = {c['name'] for c in cols}
-                    if 'asset_name' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN asset_name TEXT"))
-                    if 'group_name' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN group_name TEXT"))
-                    if 'subgroup_name' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN subgroup_name TEXT"))
-                    if 'category_name' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN category_name TEXT"))
-                    if 'fundamental_risk' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN fundamental_risk REAL"))
-                        if 'fund_risk' in existing:
-                            conn.execute(text("UPDATE risk_snapshots SET fundamental_risk = fund_risk"))
-                    if 'liquidity_risk' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN liquidity_risk REAL"))
-                        if 'liq_risk' in existing:
-                            conn.execute(text("UPDATE risk_snapshots SET liquidity_risk = liq_risk"))
-                    if 'counterparty_risk' not in existing:
-                        conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN counterparty_risk REAL"))
-                        if 'cp_risk' in existing:
-                            conn.execute(text("UPDATE risk_snapshots SET counterparty_risk = cp_risk"))
-                else:
-                    # Postgres-safe DDL.
-                    conn.execute(text("""
+            with engine.begin() as conn:
+                # Postgres-safe DDL.
+                conn.execute(text("""
                         CREATE TABLE IF NOT EXISTS risk_snapshots (
                             id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                             ts TIMESTAMPTZ NOT NULL,
@@ -404,56 +499,56 @@ def init_database() -> bool:
                             liquidity_risk DOUBLE PRECISION,
                             counterparty_risk DOUBLE PRECISION
                         );
-                    """))
-                    # Columns are included above; keep idempotent ALTERs for older schemas.
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS asset_name TEXT;"))
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS group_name TEXT;"))
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS subgroup_name TEXT;"))
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS category_name TEXT;"))
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS fundamental_risk DOUBLE PRECISION;"))
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS liquidity_risk DOUBLE PRECISION;"))
-                    conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS counterparty_risk DOUBLE PRECISION;"))
+                """))
+                # Columns are included above; keep idempotent ALTERs for older schemas.
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS asset_name TEXT;"))
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS group_name TEXT;"))
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS subgroup_name TEXT;"))
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS category_name TEXT;"))
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS fundamental_risk DOUBLE PRECISION;"))
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS liquidity_risk DOUBLE PRECISION;"))
+                conn.execute(text("ALTER TABLE risk_snapshots ADD COLUMN IF NOT EXISTS counterparty_risk DOUBLE PRECISION;"))
 
                 # Ensure indexes (dialect-agnostic)
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_risk_snapshots_ts ON risk_snapshots(ts);"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_risk_snapshots_asset_id ON risk_snapshots(asset_id);"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_risk_snapshots_group_subcat ON risk_snapshots(group_name,subgroup_name,category_name);"))
-                conn.commit()
         except Exception as e:
-            logger.warning(f"⚠️ Could not ensure risk_snapshots table (dialect-safe): {e}")
+            logger.warning(f"⚠️ Could not ensure risk_snapshots table: {e}")
 
-        # Ensure indicator_snapshots table has required columns/indexes (SQLite-safe)
+        # Ensure indicator_snapshots table (PostgreSQL only in Route A)
         try:
-            if settings.USE_SQLITE:
-                with engine.connect() as conn:
-                    conn.execute(text("""
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
                         CREATE TABLE IF NOT EXISTS indicator_snapshots (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            symbol TEXT NOT NULL,
-                            timeframe TEXT DEFAULT '1d',
-                            ts TEXT NOT NULL,
-                            sma_20 REAL,
-                            rsi_14 REAL,
-                            risk_v0 REAL,
-                            explain_json TEXT,
-                            snapshot_json TEXT,
-                            created_at TEXT
+                          id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                          symbol TEXT NOT NULL,
+                          timeframe TEXT NOT NULL DEFAULT '1d',
+                          ts TIMESTAMPTZ NOT NULL,
+                          sma_20 DOUBLE PRECISION,
+                          rsi_14 DOUBLE PRECISION,
+                          risk_v0 DOUBLE PRECISION,
+                          explain_json TEXT,
+                          snapshot_json TEXT,
+                          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                         );
-                    """))
-                    cols = conn.execute(text("PRAGMA table_info(indicator_snapshots)")).mappings().all()
-                    existing = {c['name'] for c in cols}
-                    if 'timeframe' not in existing:
-                        conn.execute(text("ALTER TABLE indicator_snapshots ADD COLUMN timeframe TEXT DEFAULT '1d'"))
-                    if 'snapshot_json' not in existing:
-                        conn.execute(text("ALTER TABLE indicator_snapshots ADD COLUMN snapshot_json TEXT"))
-                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_indicator_snapshot_symbol_tf_ts ON indicator_snapshots(symbol,timeframe,ts);"))
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_indicator_snapshot_symbol_tf_ts ON indicator_snapshots(symbol,timeframe,ts);"
+                    )
+                )
         except Exception as e:
             logger.warning(f"⚠️ Could not ensure indicator_snapshots table: {e}")
 
         return True
     except Exception as e:
         logger.error(f"❌ DB init error: {e}")
-        return False
+        raise
 
 # database.py (añade esto si no existe)
 def init_db():

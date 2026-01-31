@@ -18,13 +18,12 @@ import type {
   AlertOut,
 } from './types'
 
-export const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
-
-/** Ensure base and path are joined with a single slash */
-function joinPath(base: string, path: string) {
-  if (!base.endsWith('/')) base = base + '/'
-  if (path.startsWith('/')) path = path.slice(1)
-  return base + path
+// Normalize API path: ensure it starts with /api (proxy-only routing)
+function normalizeApiPath(path: string): string {
+  if (path.startsWith('/api/')) return path
+  if (path === '/api') return '/api'
+  if (path.startsWith('/')) return `/api${path}`
+  return `/api/${path}`
 }
 
 /**
@@ -34,7 +33,8 @@ function joinPath(base: string, path: string) {
  * const assets = await typedGet<Asset[]>('/assets')
  */
 export async function typedGet<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = joinPath(API_BASE, path)
+  // Use relative path - Vite proxy handles routing to backend
+  const url = normalizeApiPath(path)
   const res = await fetch(url, { ...init, method: 'GET' })
   
   if (!res.ok) {
@@ -53,7 +53,8 @@ export async function typedPost<TBody, TResponse>(
   body: TBody,
   init?: RequestInit
 ): Promise<TResponse> {
-  const url = joinPath(API_BASE, path)
+  // Use relative path - Vite proxy handles routing to backend
+  const url = normalizeApiPath(path)
   const res = await fetch(url, {
     ...init,
     method: 'POST',
@@ -76,7 +77,8 @@ export async function typedPost<TBody, TResponse>(
  * Low-level fetch returning Response for callers that need to inspect status (e.g. 404 handling)
  */
 export async function fetchRaw(path: string, init?: RequestInit) {
-  const url = joinPath(API_BASE, path)
+  // Use relative path - Vite proxy handles routing to backend
+  const url = normalizeApiPath(path)
   return fetch(url, init)
 }
 

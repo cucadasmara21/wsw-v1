@@ -68,10 +68,11 @@ def iter_synthetic_rows(n: int, *, prefix: str = "SYN") -> Iterable[dict]:
         z = stable_f01(sym, "z") * 0.15
         tax32 = taxonomy32_simple(i)
         meta32 = meta32_simple(i)
-        fid = 0.92
-        spin = float((i % 2))
+        # Route A: risk/shock are float32 fields in Vertex28.
+        risk = float((i % 255) / 255.0)
+        shock = float(((i * 17) % 255) / 255.0)
         mort = morton63_from_unit_xyz(x, y, z)
-        vb = pack_vertex28(tax32, meta32, x, y, z, fid, spin)
+        vb = pack_vertex28(int(mort) & 0xFFFFFFFF, int(meta32) & 0xFFFFFFFF, x, y, z, risk, shock)
         yield {
             "asset_id": uuid.uuid4(),
             "symbol": sym,
@@ -82,8 +83,8 @@ def iter_synthetic_rows(n: int, *, prefix: str = "SYN") -> Iterable[dict]:
             "x": float(x),
             "y": float(y),
             "z": float(z),
-            "fidelity_score": float(fid),
-            "spin": float(spin),
+            "fidelity_score": float(risk),
+            "spin": float(shock),
             "vertex_buffer": vb,
         }
 

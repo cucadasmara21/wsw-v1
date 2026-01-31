@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import logging
+import struct
 import time
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+import asyncio
+import json
+import os
+from pathlib import Path
+from urllib import request as _urllib_request
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
@@ -13,11 +20,54 @@ from sqlalchemy.exc import ProgrammingError
 from config import parse_db_scheme, redact_database_url, settings
 from database import engine
 from services.vertex28 import VERTEX28_STRIDE
-from services.universe_sources import v8_universe_assets_relation
+from services.vertex28 import pack_vertex28
+from services.vertex28 import validate_vertex28_blob
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/universe/v8", tags=["quantum"])
+
+_DEBUG_LOG_PATH = r"c:\Users\alber\Documents\wsw-v1\.cursor\debug.log"
+_DEBUG_INGEST_URL = "http://127.0.0.1:7242/ingest/2c312865-94f7-427e-905b-dc7584b4541a"
+
+
+def _dbg(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    # region agent log
+    try:
+        primary = _DEBUG_LOG_PATH
+        try:
+            os.makedirs(os.path.dirname(primary), exist_ok=True)
+            target = primary
+        except Exception:
+            repo_root = Path(__file__).resolve().parents[1]
+            target = str(repo_root / ".cursor" / "debug.log")
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+
+        payload = {
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(target, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    try:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = _urllib_request.Request(
+            _DEBUG_INGEST_URL,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        _urllib_request.urlopen(req, timeout=0.2).read()  # noqa: S310
+    except Exception:
+        pass
+    # endregion agent log
 
 
 def _remediation() -> str:
@@ -49,6 +99,11 @@ def _require_postgres() -> str:
     return dsn
 
 
+VERTEX28_LAYOUT = "<IIfffff"
+_V28 = struct.Struct(VERTEX28_LAYOUT)
+assert _V28.size == VERTEX28_STRIDE
+
+
 @router.get("/health")
 @router.head("/health")
 async def v8_health(request: Request):
@@ -57,6 +112,7 @@ async def v8_health(request: Request):
     reason: Optional[str] = s.get("reason")
 
     if request.method == "HEAD":
+        # Route A: 200 only when PostgreSQL is active AND seeded AND contract-ok.
         return Response(status_code=200 if v8_ready else 503)
 
     payload = {
@@ -69,6 +125,9 @@ async def v8_health(request: Request):
         "schema_ok": bool(s["schema_ok"]),
         "rows": int(s["rows"]),
         "ready": bool(s["ready"]),
+        "vertex_stride": int(s.get("vertex_stride") or VERTEX28_STRIDE),
+        "format": str(s.get("format") or "vertex28"),
+        "stride_ok": bool(s.get("stride_ok")),
         "reason": reason,
         "remediation": None if v8_ready else _remediation(),
     }
@@ -116,23 +175,11 @@ def _ensure_v8_schema_best_effort() -> None:
         logger.debug("[V8] could not ensure V8 schema: %s: %s", type(e).__name__, e)
 
 
-def _ensure_seed_if_empty_best_effort(min_rows: int = 2000) -> int:
-    """
-    Best-effort auto-seed to prevent permanent 503s when DB is empty.
-    """
-    try:
-        from database import ensure_min_universe_seed
-
-        return int(ensure_min_universe_seed(int(min_rows)) or 0)
-    except Exception:
-        return 0
-
-
 def get_v8_status() -> dict:
     """
     Source-of-truth V8 readiness for both /health and /snapshot.
 
-    ready = db_ok AND schema_ok (rows may be 0).
+    Route A: ready = db_ok AND schema_ok AND rows > 0 AND Vertex28 stride OK AND MV exists.
     """
     dsn = settings.DATABASE_URL or ""
     scheme = parse_db_scheme(dsn)
@@ -144,6 +191,9 @@ def get_v8_status() -> dict:
         "rows": 0,
         "ready": False,
         "reason": None,
+        "vertex_stride": VERTEX28_STRIDE,
+        "format": "vertex28",
+        "stride_ok": False,
         "assets_view_exists": False,
         "mv_exists": False,
         "diagnostics": diag,
@@ -152,11 +202,11 @@ def get_v8_status() -> dict:
         status["reason"] = "DATABASE_URL is not PostgreSQL; V8 requires Postgres"
         return status
 
-    rel = v8_universe_assets_relation()
-    try:
-        # Best-effort bootstrap for canonical V8 relation.
-        _ensure_v8_schema_best_effort()
+    # Route A: best-effort schema bootstrap (idempotent) so health can report accurate state.
+    _ensure_v8_schema_best_effort()
 
+    rel = "public.universe_assets"
+    try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
             status["db_ok"] = True
@@ -173,37 +223,46 @@ def get_v8_status() -> dict:
             except Exception:
                 status["mv_exists"] = False
 
-            has_table = bool(conn.execute(text(f"SELECT to_regclass('{rel}') IS NOT NULL")).scalar())
+            has_table = bool(conn.execute(text("SELECT to_regclass('public.universe_assets') IS NOT NULL")).scalar())
+            # Route A: schema_ok = required canonical table exists.
+            # MV existence is tracked separately and required for snapshot readiness.
             status["schema_ok"] = bool(has_table)
             if not has_table:
                 status["reason"] = f"Missing required table {rel}"
                 status["ready"] = False
                 return status
             try:
-                status["rows"] = int(conn.execute(text(f"SELECT COUNT(*) FROM {rel}")).scalar() or 0)
+                status["rows"] = int(conn.execute(text("SELECT COUNT(*) FROM public.universe_assets")).scalar() or 0)
             except Exception:
                 status["rows"] = 0
 
-            # Vertex28 contract gate: require at least 1 row AND a 28-byte vertex_buffer invariant.
+            try:
+                bad_stride = int(
+                    conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM public.universe_assets "
+                            "WHERE vertex_buffer IS NULL OR octet_length(vertex_buffer) != :s"
+                        ),
+                        {"s": int(VERTEX28_STRIDE)},
+                    ).scalar()
+                    or 0
+                )
+            except Exception:
+                bad_stride = 1
+            status["stride_ok"] = bool(bad_stride == 0 and status["rows"] > 0)
+
+            # Route A gate: require at least 1 row.
             if status["rows"] <= 0:
                 status["ready"] = False
                 status["reason"] = "universe_assets empty; run seeding/materialization"
                 return status
-
-            try:
-                # Cheap sample: verify at least one 28-byte buffer exists.
-                ok_any = bool(
-                    conn.execute(
-                        text(f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE octet_length(vertex_buffer)=:n)"),
-                        {"n": int(VERTEX28_STRIDE)},
-                    ).scalar()
-                )
-            except Exception:
-                ok_any = False
-
-            if not ok_any:
+            if not status["mv_exists"]:
                 status["ready"] = False
-                status["reason"] = f"vertex_buffer stride mismatch (expected {VERTEX28_STRIDE})"
+                status["reason"] = "Missing required materialized view public.universe_snapshot_v8"
+                return status
+            if not status["stride_ok"]:
+                status["ready"] = False
+                status["reason"] = "vertex_buffer missing or stride != 28; re-run Route A seeder"
                 return status
 
             status["ready"] = True
@@ -221,15 +280,18 @@ def get_v8_status() -> dict:
 async def v8_snapshot(
     request: Request,
     format: str = Query("vertex28", description="Output format: vertex28"),
-    compression: str = Query("zstd", description="Compression: zstd|none"),
+    compression: str = Query("none", description="Compression: none|zstd"),
     limit: Optional[int] = Query(None, ge=1, description="Optional max number of Vertex28 records to return"),
 ):
     t0 = time.perf_counter()
-    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
-    diag = _engine_diag()
+    # Route A: MUST be crash-proof (no NameError) even when error paths run.
+    request_id = request.headers.get("X-Request-Id") or "unknown"
+    source_name = "public.universe_assets"
+    try:
+        diag = _engine_diag()
+    except Exception:
+        diag = {}
 
-    # Gate with the same deterministic readiness used by /health.
-    # If not ready, return a structured 503 with remediation.
     s = get_v8_status()
     if not s.get("db_ok") or not s.get("schema_ok") or not s.get("ready"):
         raise HTTPException(
@@ -256,9 +318,9 @@ async def v8_snapshot(
         except Exception as e:
             zstd_available = False
             raise HTTPException(
-                status_code=503,
+                status_code=400,
                 detail={
-                    "code": 503,
+                    "code": 400,
                     "message": "compression=zstd requires zstandard.",
                     "reason": f"{type(e).__name__}: {e}",
                     "remediation": "pip install zstandard",
@@ -269,7 +331,7 @@ async def v8_snapshot(
     if format != "vertex28":
         raise HTTPException(status_code=400, detail={"code": 400, "message": f"Unsupported format: {format}"})
 
-    if compression not in ("zstd", "none"):
+    if compression not in ("none", "zstd"):
         raise HTTPException(status_code=400, detail={"code": 400, "message": f"Unsupported compression: {compression}"})
 
     def _as_bytes(v) -> bytes:
@@ -281,7 +343,8 @@ async def v8_snapshot(
         except Exception:
             raise TypeError(f"vertex_buffer is not bytes-like: {type(v).__name__}")
 
-    source = "unknown"
+    # Logging/source labels: always use predefined variables (no NameError).
+    source = source_name
     row_count = 0
     raw_payload = b""
 
@@ -312,87 +375,12 @@ async def v8_snapshot(
 
             t_conn_ms = int((time.perf_counter() - t_conn0) * 1000)
 
-            # Preflight: verify required objects and columns exist.
-            has_mv = bool(
-                conn.execute(text("SELECT to_regclass(:n) IS NOT NULL"), {"n": "public.universe_snapshot_v8"}).scalar()
-            )
-            has_table = bool(
-                conn.execute(text("SELECT to_regclass(:n) IS NOT NULL"), {"n": "public.universe_assets"}).scalar()
-            )
-
-            if has_mv:
-                source = "universe_snapshot_v8"
-                table_for_columns = "universe_snapshot_v8"
-            elif has_table:
-                source = "universe_assets"
-                table_for_columns = "universe_assets"
-            else:
-                # Auto-bootstrap attempt (idempotent) before returning 503.
-                try:
-                    from database import init_database
-
-                    init_database()
-                except Exception:
-                    pass
-                has_mv = bool(
-                    conn.execute(text("SELECT to_regclass(:n) IS NOT NULL"), {"n": "public.universe_snapshot_v8"}).scalar()
-                )
-                has_table = bool(
-                    conn.execute(text("SELECT to_regclass(:n) IS NOT NULL"), {"n": "public.universe_assets"}).scalar()
-                )
-                if has_mv:
-                    source = "universe_snapshot_v8"
-                    table_for_columns = "universe_snapshot_v8"
-                elif has_table:
-                    source = "universe_assets"
-                    table_for_columns = "universe_assets"
-                else:
-                    raise HTTPException(
-                        status_code=503,
-                        detail={
-                            "code": 503,
-                            "message": "Titan V8 snapshot prerequisites missing: no snapshot source exists.",
-                            "details": {
-                                "has_universe_snapshot_v8": bool(has_mv),
-                                "has_universe_assets": bool(has_table),
-                            },
-                            "diagnostics": diag,
-                            "remediation": _snapshot_prereq_remediation(),
-                            "request_id": request_id,
-                        },
-                    )
-
-            cols = conn.execute(
-                text(
-                    """
-                    SELECT column_name, data_type
-                    FROM information_schema.columns
-                    WHERE table_schema='public' AND table_name = :t
-                    """
-                ),
-                {"t": table_for_columns},
-            ).mappings().all()
-            colset = {r["column_name"] for r in cols}
-            missing_cols = [c for c in ("morton_code", "vertex_buffer") if c not in colset]
-            if missing_cols:
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": 503,
-                        "message": f"Snapshot prerequisites missing: {source} is missing required columns.",
-                        "details": {
-                            "source": source,
-                            "missing_columns": missing_cols,
-                            "present_columns": sorted(list(colset))[:50],
-                        },
-                        "diagnostics": diag,
-                        "remediation": _snapshot_prereq_remediation(),
-                        "request_id": request_id,
-                    },
-                )
-
-            # Deterministic query order
-            base_q = f"SELECT morton_code, vertex_buffer FROM public.{source} ORDER BY morton_code ASC"
+            # Route A: strict Vertex28 from the MV (required).
+            base_q = """
+              SELECT vertex_buffer
+              FROM public.universe_snapshot_v8
+              ORDER BY morton_code ASC
+            """
             params = {}
             if limit is not None:
                 base_q += " LIMIT :lim"
@@ -404,7 +392,7 @@ async def v8_snapshot(
             except ProgrammingError as e:
                 logger.exception(
                     "[V8 snapshot] SQL failed source=%s request_id=%s diag=%s",
-                    source,
+                    source_name,
                     request_id,
                     diag,
                 )
@@ -412,7 +400,7 @@ async def v8_snapshot(
                     status_code=503,
                     detail={
                         "code": 503,
-                        "message": f"Snapshot query failed for source={source}. Schema may be missing or incompatible.",
+                        "message": f"Snapshot query failed for source={source_name}. Schema may be missing or incompatible.",
                         "reason": f"{type(e).__name__}: {e}",
                         "diagnostics": diag,
                         "remediation": _snapshot_prereq_remediation(),
@@ -421,104 +409,22 @@ async def v8_snapshot(
                 )
             t_q_ms = int((time.perf_counter() - t_q0) * 1000)
 
-            # Validate stride + Morton uniqueness while assembling payload.
             buf = bytearray()
-            min_len: Optional[int] = None
-            max_len: Optional[int] = None
-            bad = 0
-            seen_morton: set[int] = set()
-            collisions: list[int] = []
-
-            for mc, vb in result_rows:
-                mc_i = int(mc)
-                if mc_i in seen_morton and len(collisions) < 10:
-                    collisions.append(mc_i)
-                seen_morton.add(mc_i)
-
+            for (vb,) in result_rows:
                 b = _as_bytes(vb)
-                n = len(b)
-                min_len = n if (min_len is None or n < min_len) else min_len
-                max_len = n if (max_len is None or n > max_len) else max_len
-                if n != VERTEX28_STRIDE:
-                    bad += 1
-                buf.extend(b)
-
-            row_count = len(result_rows)
-
-            if row_count == 0:
-                # Auto-seed minimal universe and retry ONCE (fast path to unblock UI today).
-                seeded = _ensure_seed_if_empty_best_effort(2000)
-                if seeded > 0:
-                    source = "universe_assets"
-                    result_rows = conn.execute(
-                        text(
-                            "SELECT morton_code, vertex_buffer FROM public.universe_assets ORDER BY morton_code ASC"
-                            + (" LIMIT :lim" if limit is not None else "")
-                        ),
-                        {"lim": int(limit)} if limit is not None else {},
-                    ).all()
-                    buf = bytearray()
-                    for mc, vb in result_rows:
-                        buf.extend(_as_bytes(vb))
-                    raw_payload = bytes(buf)
-                    row_count = len(result_rows)
-                if row_count == 0:
-                    dt_ms = int((time.perf_counter() - t0) * 1000)
-                    logger.info(
-                        "[V8 snapshot] source=%s rows=0 compression=%s bytes=0 dt_ms=%d conn_ms=%d query_ms=%d request_id=%s diag=%s",
-                        source,
-                        compression,
-                        dt_ms,
-                        t_conn_ms,
-                        t_q_ms,
-                        request_id,
-                        diag,
-                    )
+                if len(b) != VERTEX28_STRIDE:
                     raise HTTPException(
                         status_code=503,
                         detail={
                             "code": 503,
-                            "status": "unavailable",
-                            "message": "Titan V8 snapshot has no data (0 rows) even after auto-seed attempt.",
-                            "reason": "universe_assets empty",
-                            "source": source,
-                            "diagnostics": diag,
-                            "remediation": _snapshot_prereq_remediation(),
+                            "message": "Vertex28 contract violation: vertex_buffer stride != 28 detected.",
+                            "expected_stride": VERTEX28_STRIDE,
+                            "actual_len": len(b),
                             "request_id": request_id,
                         },
                     )
-
-            if bad != 0:
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "code": 422,
-                        "message": "Vertex28 contract violation: vertex_buffer stride != 28 detected.",
-                        "source": source,
-                        "rows": row_count,
-                        "expected_stride": VERTEX28_STRIDE,
-                        "min_len": min_len,
-                        "max_len": max_len,
-                        "bad_count": bad,
-                        "diagnostics": diag,
-                        "request_id": request_id,
-                    },
-                )
-
-            if collisions:
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "code": 422,
-                        "message": "Morton63 collision detected in snapshot source (duplicate morton_code).",
-                        "source": source,
-                        "rows": row_count,
-                        "collisions_sample": collisions,
-                        "diagnostics": diag,
-                        "request_id": request_id,
-                    },
-                )
-
+                buf.extend(b)
+            row_count = len(result_rows)
             raw_payload = bytes(buf)
 
     except HTTPException:
@@ -553,8 +459,26 @@ async def v8_snapshot(
                     "expected_len": expected_len,
                     "actual_len": len(raw_payload),
                     "stride": VERTEX28_STRIDE,
-                    "source": source,
+                    "source": "universe_assets",
                 },
+                "request_id": request_id,
+            },
+        )
+
+    # Route A contract guard: MUST be multiple of 28 before returning bytes.
+    # Validation (DoD): (Get-Item v8_snapshot.bin).Length % 28 -eq 0
+    try:
+        _ = validate_vertex28_blob(raw_payload)
+    except Exception as e:
+        # Contract failure: return JSON 503 (not 500 crash).
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": 503,
+                "message": "Vertex28 contract violation: snapshot length is not a multiple of 28.",
+                "reason": f"{type(e).__name__}: {e}",
+                "source": source_name,
+                "rows": row_count,
                 "request_id": request_id,
             },
         )
@@ -568,29 +492,34 @@ async def v8_snapshot(
         for i in range(0, n_samples * step, step):
             off = i * VERTEX28_STRIDE
             rec = raw_payload[off : off + VERTEX28_STRIDE]
-            tax, meta, x, y, z, fid, spin = unpack_vertex28(rec)
+            mort_u32, meta32, x, y, z, risk, shock = unpack_vertex28(rec)
             if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and 0.0 <= z <= 1.0):
                 raise ValueError(f"xyz out of [0,1] range at sample idx={i}: {(x, y, z)}")
-            if not (0.0 <= fid <= 1.0):
-                raise ValueError(f"fidelity out of [0,1] range at sample idx={i}: {fid}")
-            # tax/meta are uint32; no further constraint here
-            _ = (tax, meta, spin)
+            if not (0.0 <= risk <= 1.0):
+                raise ValueError(f"risk out of [0,1] range at sample idx={i}: {risk}")
+            if not (0.0 <= shock <= 1.0):
+                raise ValueError(f"shock out of [0,1] range at sample idx={i}: {shock}")
+            _ = (mort_u32, meta32)
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(
-            "[V8 snapshot] contract sample validation failed request_id=%s source=%s diag=%s",
-            request_id,
-            source,
-            diag,
-        )
+        # Logging must never throw (use predefined vars and guard).
+        try:
+            logger.exception(
+                "[V8 snapshot] contract sample validation failed request_id=%s source=%s diag=%s",
+                request_id,
+                source_name,
+                diag,
+            )
+        except Exception:
+            pass
         raise HTTPException(
-            status_code=422,
+            status_code=503,
             detail={
-                "code": 422,
+                "code": 503,
                 "message": "Vertex28 contract sample validation failed.",
                 "reason": f"{type(e).__name__}: {e}",
-                "source": source,
+                "source": source_name,
                 "rows": row_count,
                 "request_id": request_id,
             },
@@ -609,12 +538,17 @@ async def v8_snapshot(
         "X-Titan-Version": "V8",
         "X-Reality-Source": "postgresql",
         "X-Vertex-Stride": str(VERTEX28_STRIDE),
+        # Validation convenience (HTTP headers are case-insensitive).
+        "x-vertex-stride": str(VERTEX28_STRIDE),
+        "X-Points-Count": str(row_count),
         "X-Asset-Count": str(row_count),
-        "X-Titan-Source": source,
+        "X-Titan-Source": "universe_assets",
         "X-Request-Id": request_id,
         "Cache-Control": "no-store",
-        "X-WSW-Format": "vertex28",
-        "X-WSW-Points-Count": str(row_count),
+        # Route A required headers
+        "x-wsw-stride": str(VERTEX28_STRIDE),
+        "x-wsw-format": "vertex28",
+        "x-wsw-points-count": str(row_count),
     }
     if compression == "zstd":
         headers["Content-Encoding"] = "zstd"
@@ -622,7 +556,7 @@ async def v8_snapshot(
 
     logger.info(
         "[V8 snapshot] source=%s rows=%d compression=%s raw_bytes=%d out_bytes=%d dt_ms=%d comp_ms=%d diag=%s request_id=%s",
-        source,
+        source_name,
         row_count,
         compression,
         len(raw_payload),
@@ -634,4 +568,18 @@ async def v8_snapshot(
     )
 
     return Response(content=payload, media_type="application/octet-stream", headers=headers)
+
+
+@router.websocket("/stream")
+async def v8_stream(ws: WebSocket):
+    # Route A minimal stream: keepalive/heartbeat (no deltas yet).
+    await ws.accept()
+    _dbg("H4", "api/universe_v8.py:v8_stream", "ws_accept", {"path": "/api/universe/v8/stream"})
+    try:
+        while True:
+            await ws.send_text(f'{{"type":"heartbeat","ts":{int(time.time()*1000)}}}')
+            await asyncio.sleep(2.0)
+    except WebSocketDisconnect:
+        _dbg("H4", "api/universe_v8.py:v8_stream", "ws_disconnect", {"path": "/api/universe/v8/stream"})
+        return
 

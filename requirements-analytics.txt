@@ -4,3 +4,8 @@ pandas>=2.2.2
 numpy>=1.26.4
 matplotlib>=3.8.0
 yfinance>=0.2.27
+
+# Sovereign Symphony dependencies (optional, graceful degradation if missing)
+scipy>=1.11.0  # For sparse matrices (optional, falls back to dense if missing)
+numba>=0.59.0  # For JIT acceleration (optional, falls back to pure NumPy if missing)
+pyarrow>=14.0.0  # For Arrow IPC streaming (optional)

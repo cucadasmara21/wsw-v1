@@ -491,7 +491,7 @@ def _compute_vertex_record(
     fid = fidelity_score(bool(has_price), True)
     spn = spin_value(taxonomy32, risk_tier)
 
-    vb = pack_vertex28(taxonomy32, meta32, x, y, z, fid, spn)
+    vb = pack_vertex28(int(morton) & 0xFFFFFFFF, meta32, x, y, z, fid, spn)
     if len(vb) != VERTEX_STRIDE:
         raise RuntimeError(f"Vertex28 stride violation: got {len(vb)} bytes, expected 28")
 
@@ -780,15 +780,7 @@ async def resolve_staging_morton_collisions(conn: asyncpg.Connection, *, max_att
                 fidelity = float(cur["fidelity_score"] or 0.0)
                 spin = float(cur["spin"] or 0.0)
 
-                vb = pack_vertex28(
-                    taxonomy32=taxonomy32,
-                    meta32=meta32,
-                    x=x,
-                    y=y,
-                    z=z,
-                    fidelity=fidelity,
-                    spin=spin,
-                )
+                vb = pack_vertex28(int(new_mc) & 0xFFFFFFFF, meta32, x, y, z, fidelity, spin)
                 await conn.execute(
                     f"""
                     UPDATE public."{tn}"
@@ -1044,7 +1036,7 @@ async def main() -> None:
                     fid = fidelity_score(has_price=False, has_sector=True)
                     spin = spin_value(tax32, risk)
                     mort = morton63_from_unit_xyz_salted(x, y, z, stable_u32_from_str(sym))
-                    vb = pack_vertex28(tax32, meta32, x, y, z, fid, spin)
+                    vb = pack_vertex28(int(mort) & 0xFFFFFFFF, meta32, x, y, z, fid, spin)
                     if len(vb) != VERTEX_STRIDE:
                         raise SystemExit(f"ERROR: Vertex28 pack stride mismatch for {sym}: {len(vb)}")
                     rows.append(
@@ -1305,4 +1297,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Route A: PostgreSQL-only deterministic seed using staging table public._stg_universe_assets.
+    from backend.scripts.seed_universe_v8_routeA import main as route_a_main
+
+    asyncio.run(route_a_main())

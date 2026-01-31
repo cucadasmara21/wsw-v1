@@ -1,23 +1,30 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Proxy /api and /health to the backend running on localhost:8000
 export default defineConfig({
   plugins: [react()],
+  worker: {
+    format: 'es'
+  },
   server: {
+    host: '127.0.0.1',
     port: 5173,
-    strictPort: true, // fail if 5173 is busy (preferred for clarity)
+    strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        ws: true,
+        secure: false
       },
       '/health': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false
       },
-      '/version': {
-        target: 'http://localhost:8000',
+      '/ws': {
+        target: 'ws://127.0.0.1:8000',
+        ws: true,
         changeOrigin: true
       }
     }

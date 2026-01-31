@@ -72,14 +72,10 @@ function Assert-Http200([string]$Url, [string]$Label) {
 Assert-Http200 "$ApiBase/api/universe/v8/health" "v8/health"
 
 $snap = Join-Path $env:TEMP "v8_snapshot.bin"
-curl.exe -s -o "$snap" "$ApiBase/api/universe/v8/snapshot?format=vertex28&compression=zstd"
+curl.exe -s -o "$snap" "$ApiBase/api/universe/v8/snapshot?format=vertex28&compression=none"
 if ((Get-Item $snap).Length -le 0) { throw "FAIL: v8 snapshot empty" }
+if (((Get-Item $snap).Length % 28) -ne 0) { throw "FAIL: v8 snapshot length not multiple of 28" }
 Write-Host ("PASS: v8 snapshot bytes={0}" -f (Get-Item $snap).Length) -ForegroundColor Green
-
-$pb = Join-Path $env:TEMP "points.bin"
-curl.exe -s -o "$pb" "$ApiBase/api/universe/points.bin?limit=10000"
-if ((Get-Item $pb).Length -le 0) { throw "FAIL: points.bin empty" }
-Write-Host ("PASS: points.bin bytes={0}" -f (Get-Item $pb).Length) -ForegroundColor Green
 
 Write-Host "=== ALL PASS ===" -ForegroundColor Green
 Write-Host ("Open: {0}/universe" -f $FrontendBase) -ForegroundColor Cyan

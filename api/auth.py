@@ -4,7 +4,7 @@ SQLAlchemy 2.x compatible
 """
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -18,7 +18,7 @@ from config import settings
 router = APIRouter(tags=["auth"])
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
 
 
 def get_password_hash(password):
@@ -40,7 +40,30 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    # DEBUG bypass: GET requests in development mode
+    is_dev = settings.DEBUG or settings.ENVIRONMENT == "development"
+    if is_dev and request.method == "GET":
+        # Return mock sovereign admin user for GET requests in DEBUG mode
+        mock_user = User(
+            id=1,
+            username="sovereign",
+            email="sovereign@local",
+            hashed_password="",
+            role="admin",
+            is_active=True,
+            full_name="Sovereign User"
+        )
+        return mock_user
+    
+    # Normal JWT authentication for POST/PUT/DELETE or non-DEBUG
+    if token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")

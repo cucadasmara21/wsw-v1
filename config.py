@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def _resolve_env_path() -> Path:
 
 _env_path = _resolve_env_path()
 if not _env_path.exists():
-    logger.warning(f".env not found at {_env_path} (cwd-proof lookup); DATABASE_URL may fall back to default.")
+    logger.warning(f".env not found at {_env_path} (cwd-proof lookup); DATABASE_URL must be set for Route A.")
 
 
 def redact_database_url(url: str) -> str:
@@ -90,8 +90,8 @@ class Settings(BaseSettings):
 
     # ==================== BASE DE DATOS ====================
     DATABASE_URL: str = Field(
-        # Postgres-first default for TITAN V8. Legacy SQLite is still supported only if explicitly set.
-        default="postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/wsw_db",
+        # Route A: Postgres-only, must be explicitly provided.
+        default="",
         env=("DATABASE_URL", "POSTGRES_DSN"),
     )
     
@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     # ==================== UNIVERSE CONFIG ====================
     UNIVERSE_TARGET_COUNT: int = Field(default=10000, env="UNIVERSE_TARGET_COUNT")
     ENABLE_PARTITIONS: bool = Field(default=False, env="ENABLE_PARTITIONS")
+    # P-04: VoidPool slot recycling. When True: Death/Birth wired; fail-fast if pool fails.
+    ENABLE_VOIDPOOL: bool = Field(default=True, env="ENABLE_VOIDPOOL")
 
     # ==================== NEO4J (OPCIONAL) ====================
     NEO4J_URI: Optional[str] = Field(default=None, env="NEO4J_URI")
@@ -153,6 +155,7 @@ class Settings(BaseSettings):
     # ==================== BANDERAS DERIVADAS ====================
     ENABLE_REDIS: bool = False
     ENABLE_NEO4J: bool = False
+    # Route A: keep flag for older modules, always False (SQLite forbidden).
     USE_SQLITE: bool = False
 
     @field_validator('ENABLE_REDIS', mode='before')
@@ -171,13 +174,6 @@ class Settings(BaseSettings):
             info.data.get('NEO4J_PASSWORD')
         ])
 
-    @field_validator('USE_SQLITE', mode='before')
-    @classmethod
-    def validate_use_sqlite(cls, v, info):
-        """Detectar si se usa SQLite"""
-        db_url = info.data.get('DATABASE_URL', '')
-        return 'sqlite' in db_url.lower()
-    
     @field_validator('DATABASE_DSN_ASYNC', mode='before')
     @classmethod
     def validate_database_dsn_async(cls, v, info):
@@ -185,24 +181,33 @@ class Settings(BaseSettings):
         if v:
             return normalize_asyncpg_dsn(str(v))
         db_url = info.data.get('DATABASE_URL', '')
-        if db_url and not db_url.startswith('sqlite'):
+        if db_url:
+            # Route A: Postgres-only
             return normalize_asyncpg_dsn(str(db_url))
         return None
 
     @field_validator('DATABASE_URL', mode='before')
     @classmethod
-    def validate_database_url(cls, v):
+    def validate_database_url(cls, v, info):
         """
         Normalize DATABASE_URL for SQLAlchemy:
         - Accept postgresql:// and upgrade to postgresql+psycopg2:// for Windows reliability.
         - Preserve sqlite:// if explicitly set (legacy-only).
         """
-        if not v:
-            # Fall back to environment if unset.
-            return get_sqlalchemy_url(default="")
-        if isinstance(v, str):
-            return normalize_sqlalchemy_url(v)
-        return v
+        if v is None:
+            v = ""
+        s = v.strip() if isinstance(v, str) else str(v)
+        if not s:
+            raise ValueError("DATABASE_URL is required (Route A: PostgreSQL-only).")
+
+        sl = s.lower()
+        if sl.startswith("sqlite"):
+            raise ValueError("SQLite is not allowed (Route A: PostgreSQL-only).")
+
+        out = normalize_sqlalchemy_url(s)
+        if parse_db_scheme(out) != "postgresql":
+            raise ValueError("DATABASE_URL must be PostgreSQL (postgresql:// or postgresql+psycopg2://).")
+        return out
     
     @staticmethod
     def normalize_async_dsn(dsn: str) -> str:
@@ -239,8 +244,17 @@ class Settings(BaseSettings):
             return []
         return [host.strip() for host in self.TRUSTED_HOSTS.split(',')]
 
-# Instancia global de configuración
-settings = Settings()
+# Instancia global de configuración (Route A: fail-fast).
+# If DATABASE_URL is missing/invalid (e.g., sqlite), the backend MUST NOT start.
+try:
+    settings = Settings()
+except ValidationError as e:
+    raise RuntimeError(
+        "Invalid configuration (Route A: PostgreSQL-only). "
+        "Set DATABASE_URL to a PostgreSQL DSN (postgresql:// or postgresql+psycopg2://)."
+    ) from e
+except Exception as e:
+    raise RuntimeError("Failed to load configuration (Route A: PostgreSQL-only).") from e
 
 # Log de configuración
 db_scheme = parse_db_scheme(settings.DATABASE_URL)

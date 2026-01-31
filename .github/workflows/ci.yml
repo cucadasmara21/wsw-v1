@@ -2,13 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "chore/git-repair-phase1" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "chore/git-repair-phase1" ]
 
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +39,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5432 -U test_user -d test_db && exit 0
+            sleep 1
+          done
+          echo "Postgres not ready" && exit 1
 
       - name: Run pytest
         run: python -m pytest -v --tb=short

@@ -9,7 +9,9 @@ import uuid
 import subprocess
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
@@ -18,7 +20,7 @@ from sqlalchemy import text
 from config import settings
 from database import engine, get_db, init_database, test_connections, neo4j_driver
 from models import Base
-from api import assets, risk, scenarios, auth, market, universe, metrics, alerts
+from api import assets, risk, scenarios, auth, market, universe, metrics, alerts, universe_v8
 from services.cache_service import cache_service
 from services.scheduler import create_scheduler_task, cancel_scheduler_task
 
@@ -36,11 +38,32 @@ BUILD_INFO = {
 }
 
 # Logger - Structured logging with request tracking
+_old_factory = logging.getLogRecordFactory()
+
+
+def _record_factory(*args, **kwargs):
+    """
+    Ensure every LogRecord has request_id so formatters never crash.
+
+    This prevents KeyError in format strings like "[%(request_id)s]" for:
+    - uvicorn/uvicorn.access loggers
+    - third-party libs
+    - startup logs emitted before middleware attaches per-request context
+    """
+    record = _old_factory(*args, **kwargs)
+    if not hasattr(record, "request_id"):
+        record.request_id = "-"
+    return record
+
+
+logging.setLogRecordFactory(_record_factory)
+
+
 class RequestIDFilter(logging.Filter):
     """Add request_id to all log records"""
     def filter(self, record):
         if not hasattr(record, 'request_id'):
-            record.request_id = 'startup'
+            record.request_id = '-'
         return True
 
 logging.basicConfig(
@@ -61,23 +84,23 @@ async def lifespan(app: FastAPI):
     logger.info(f"🔧 Debug: {settings.DEBUG}")
     logger.info(f"🔌 DB:  {settings.DATABASE_URL[: 40]}...")
 
-    try:
-        success = init_database()
-        if success:
-            logger.info("✅ Base de datos inicializada")
-        else:
-            logger.warning("⚠️  BD no completamente inicializada")
-    except Exception as e:
-        logger.error(f"❌ Error DB: {e}")
+    # Route A: fail-fast. If Postgres is unreachable or bootstrap fails, do not start.
+    success = init_database()
+    if not success:
+        raise RuntimeError("DB initialization failed (Route A: Postgres-only).")
+    logger.info("✅ Base de datos inicializada")
 
-    try:
-        connections = test_connections()
-        logger.info(f"📊 Conexiones:")
-        logger.info(f"   - PostgreSQL/SQLite: {'✅' if connections.get('postgres') else '❌'}")
-        logger.info(f"   - Redis: {'✅' if connections.get('redis') else '⊘' if connections.get('redis') is None else '❌'}")
-        logger.info(f"   - Neo4j: {'✅' if connections.get('neo4j') else '⊘' if connections.get('neo4j') is None else '❌'}")
-    except Exception as e:
-        logger.error(f"⚠️  Error conexiones: {e}")
+    # Connectivity gate (Route A): must succeed.
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+
+    connections = test_connections()
+    logger.info("📊 Conexiones:")
+    logger.info(f"   - PostgreSQL: {'✅' if connections.get('postgres') else '❌'}")
+    logger.info(f"   - Redis: {'✅' if connections.get('redis') else '⊘' if connections.get('redis') is None else '❌'}")
+    logger.info(f"   - Neo4j: {'✅' if connections.get('neo4j') else '⊘' if connections.get('neo4j') is None else '❌'}")
+    if not connections.get("postgres"):
+        raise RuntimeError("PostgreSQL unreachable (Route A: fail-fast).")
 
     try:
         cache_service.initialize()
@@ -213,6 +236,22 @@ app.include_router(scenarios.router, prefix="/api/scenarios")
 app.include_router(market.router, prefix="/api/market")
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+# Route A: Universe V8 router must be mounted at /api/universe/v8.
+# The router currently defines its own prefix; keep compatibility if that changes.
+if getattr(universe_v8.router, "prefix", ""):
+    app.include_router(universe_v8.router)
+else:
+    app.include_router(universe_v8.router, prefix="/api/universe/v8")
+
+# Route A: compatibility path without trailing slash.
+# This prevents 307 redirects for clients calling `/api/assets?limit=50`.
+@app.get("/api/assets", include_in_schema=False)
+async def assets_no_slash(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=1000),
+    q: Optional[str] = Query(None),
+):
+    return await assets.get_assets(skip=skip, limit=limit, q=q)
 
 
 @app.get("/")

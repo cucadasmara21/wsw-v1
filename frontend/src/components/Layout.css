@@ -2,26 +2,14 @@
   display: flex;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+  z-index: 2;
 }
 
 .sidebar {
   width: 250px;
-  background: #1e293b;
-  color: white;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #334155;
-}
-
-.sidebar-header {
-  padding: 1.5rem 1rem;
-  border-bottom: 1px solid #334155;
-}
-
-.sidebar-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
 }
 
 .sidebar-nav {
@@ -32,28 +20,19 @@
   gap: 0.25rem;
 }
 
-.sidebar-nav a {
-  padding: 0.75rem 1rem;
-  color: #cbd5e1;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.2s;
-}
-
-.sidebar-nav a:hover {
-  background: #334155;
-  color: white;
-}
-
-.sidebar-nav a.active {
-  background: #3b82f6;
-  color: white;
-}
-
 .main-content {
   flex: 1;
   overflow-y: auto;
-  background: #f8fafc;
+  background: var(--bg-0);
+  position: relative;
+  z-index: 1;
+}
+
+/* Obsidian HUD: Dynamic glassmorphism */
+.glass-panel {
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+  filter: hue-rotate(var(--glass-shift, 0deg));
+  border: 1px solid rgba(255, 255, 255, var(--glass-border, 0.08));
+  transition: all 0.3s ease-out;
 }

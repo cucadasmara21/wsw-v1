@@ -21,19 +21,8 @@ router = APIRouter(tags=["risk"])
 def get_risk_overview(
     top_n: int = Query(10, ge=1, le=200),
 ):
-    """Return an aggregated risk overview as of the latest snapshot per asset.
-    Uses sqlite3 direct queries against the configured DATABASE_URL sqlite file (avoids SQLAlchemy/ORM).
-    """
-    import sqlite3
-    from config import settings
-    import logging
-
-    log = logging.getLogger(__name__)
-
-    # Resolve SQLite file path from DATABASE_URL
-    db_url = settings.DATABASE_URL
-    if 'sqlite' not in db_url.lower():
-        raise HTTPException(status_code=500, detail="Risk overview requires a sqlite DATABASE_URL")
+    """Route A: SQLite-only legacy endpoint is disabled."""
+    raise HTTPException(status_code=410, detail="Route A: risk overview is disabled (legacy sqlite-only endpoint).")
 
     # support sqlite:///./wsw.db or sqlite:///<abs>
     db_path = db_url.split('sqlite:///')[-1]

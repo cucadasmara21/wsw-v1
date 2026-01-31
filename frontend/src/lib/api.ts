@@ -1,19 +1,21 @@
-export const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
-
-/** Ensure base and path are joined with a single slash */
-function joinPath(base: string, path: string) {
-  if (!base.endsWith('/')) base = base + '/'
-  if (path.startsWith('/')) path = path.slice(1)
-  return base + path
+// Normalize API path: ensure it starts with /api (proxy-only routing)
+function normalizeApiPath(path: string): string {
+  if (path.startsWith('/api/')) return path
+  if (path === '/api') return '/api'
+  if (path.startsWith('/')) return `/api${path}`
+  return `/api/${path}`
 }
 
-/**
- * Fetch relative to API base. Pass a path starting with '/' (e.g. '/assets')
- * which will be requested as `${API_BASE}${path}`. Throws on non-ok.
- */
 export async function fetchApiJson<T = any>(path: string, init?: RequestInit) {
-  const url = joinPath(API_BASE, path)
-  const res = await fetch(url, init)
+  // Use relative path - Vite proxy handles routing to backend
+  const finalUrl = normalizeApiPath(path)
+  
+  // DEV-only debug for assets fetch
+  if (import.meta.env.DEV && path.includes('assets')) {
+    console.debug('[fetchAssets] finalUrl=', finalUrl, 'status=...')
+  }
+  
+  const res = await fetch(finalUrl, init)
   if (!res.ok) {
     const text = await res.text()
     let errorData
@@ -24,42 +26,67 @@ export async function fetchApiJson<T = any>(path: string, init?: RequestInit) {
     }
     throw errorData
   }
-  return res.json() as Promise<T>
-}
-
-/**
- * Low-level fetch returning Response for callers that need to inspect status (e.g. 404 handling)
- */
-export async function fetchApiRaw(path: string, init?: RequestInit) {
-  const url = joinPath(API_BASE, path)
-  return fetch(url, init)
-}
-
-/**
- * Fetch from root (use for /health, /version)
- */
-export async function fetchRootJson<T = any>(path: string, init?: RequestInit) {
-  const res = await fetch(path, init)
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`)
+  
+  // DEV-only: log status after fetch completes
+  if (import.meta.env.DEV && path.includes('assets')) {
+    console.debug('[fetchAssets] finalUrl=', finalUrl, 'status=', res.status)
   }
+  
   return res.json() as Promise<T>
 }
 
-/**
- * Simple API client for common operations
- */
+export async function fetchApiRaw(path: string, init?: RequestInit) {
+  // Use relative path - Vite proxy handles routing to backend
+  const finalUrl = normalizeApiPath(path)
+  return fetch(finalUrl, init)
+}
+
+export async function fetchApiArrayBuffer(path: string, init?: RequestInit) {
+  // Use relative path - Vite proxy handles routing to backend
+  const finalUrl = normalizeApiPath(path)
+  const res = await fetch(finalUrl, init)
+  if (!res.ok) {
+    throw new Error(`${res.status} ${res.statusText}`)
+  }
+  return res.arrayBuffer()
+}
+
+export async function fetchRootJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init)
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+  return (await res.json()) as T
+}
+
 export const apiClient = {
   async get<T>(path: string): Promise<T> {
     return fetchApiJson<T>(path)
   },
-  
+
   async post<T>(path: string, body: any): Promise<T> {
     return fetchApiJson<T>(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
+  },
+
+  async getHealth() {
+    return fetchApiJson<{ status: string; timestamp: string; services: any }>('/health')
+  },
+
+  async getUniverseTree() {
+    return fetchApiJson<any>('/universe/tree')
+  },
+
+  // Route A: legacy universe points endpoints removed. Use V8 snapshot/health only.
+
+  async getAssetDetail(symbol: string) {
+    return fetchApiJson<{
+      symbol: string
+      name: string
+      lastPrice: number
+      changePercent: number
+      sparkline: number[]
+    }>(`/assets/detail?symbol=${encodeURIComponent(symbol)}`)
   }
 }

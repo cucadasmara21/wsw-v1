@@ -17,7 +17,7 @@ export default function Assets(){
     setLoading(true)
     setError(null)
     try{
-      const data = await fetchJson<Asset[]>('/assets')
+      const data = await fetchApiJson<Asset[]>('/assets')
       setAssets(data)
     }catch(e: any){
       setError(e.message)

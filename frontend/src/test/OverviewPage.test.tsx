@@ -30,7 +30,7 @@ describe('OverviewPage', () => {
       </MemoryRouter>
     )
     
-    expect(screen.getByText('Overview')).toBeDefined()
+    expect(screen.getByText('Sovereign Command Center')).toBeDefined()
   })
   
   it('renders stat cards', () => {

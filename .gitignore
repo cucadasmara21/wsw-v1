@@ -13,11 +13,12 @@ env/
 .venv_test2/
 frontend/.venv_test/
 
-# Node
+# Node / Frontend
 node_modules/
 frontend/node_modules/
+frontend/node_modules/.vite/
 frontend/dist/
-frontend/.vite/
+dist/
 
 # IDE
 .vscode/
@@ -40,9 +41,6 @@ wsw.db
 *.log
 logs/
 
-# Node
-node_modules/
-
 # OS
 .DS_Store
 Thumbs.db
@@ -53,3 +51,25 @@ Thumbs.db
 
 # Misc
 *.pyc
+.pytest_cache/
+
+# Generated artifacts / outputs
+OUTPUT*.txt
+*.diff
+*.patch
+*.bak
+*_patch_targets*
+snapshots/
+snapshot*.bin
+snap*.bin
+snapshot*.zst
+tree_full.txt
+tree_*.txt
+
+# --- Generated artifacts / local-only ---
+_hot_files.txt
+_hot_pack.zip
+WIP_*.diff
+WIP_*.txt
+docs_git_status_before.txt
+Contexto WSW1/

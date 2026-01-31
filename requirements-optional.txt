@@ -2,3 +2,4 @@
 # Install only if using Redis or Neo4j in your environment
 redis>=5
 neo4j>=5
+asyncpg>=0.29.0

@@ -3,12 +3,13 @@ Role-Based Access Control (RBAC) service
 Defines roles and dependencies for FastAPI
 """
 from typing import List, Optional
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
 from api.auth import get_current_user
 from models import User
+from config import settings
 
 # Define valid roles
 ROLE_ADMIN = "admin"

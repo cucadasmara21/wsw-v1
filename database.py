@@ -108,6 +108,29 @@ async def drop_public_assets_type_safe_async(conn) -> None:
         await conn.execute("DROP TABLE IF EXISTS public.assets CASCADE;")
 
 
+def ensure_public_assets_view(conn) -> None:
+    """
+    Ensure public.assets exists as a compatibility VIEW sourced from universe_assets.
+    Drops any existing TABLE or VIEW first (type-safe).
+    """
+    drop_public_assets_type_safe(conn)
+    conn.execute(
+        text(
+            """
+            CREATE OR REPLACE VIEW public.assets AS
+            SELECT
+              row_number() OVER (ORDER BY symbol)::int AS id,
+              symbol,
+              COALESCE(NULLIF(btrim(symbol), ''), 'UNKNOWN') AS name,
+              sector,
+              taxonomy32::bigint AS taxonomy32,
+              meta32::bigint AS meta32
+            FROM public.universe_assets;
+            """
+        )
+    )
+
+
 def ensure_v8_schema() -> None:
     """
     Idempotent Postgres-first bootstrap for TITAN V8 canonical objects.
@@ -252,11 +275,6 @@ def ensure_v8_schema() -> None:
         # Enforce UNIQUE(symbol) at the index level (idempotent repair from older non-unique indexes).
         conn.execute(text("DROP INDEX IF EXISTS public.ix__stg_universe_assets_symbol;"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux__stg_universe_assets_symbol ON public._stg_universe_assets(symbol);"))
-
-        # CI/legacy: assets MUST be a TABLE (prices FK references assets.id).
-        # Type-safe drop: VIEW or TABLE; ORM create_all will create assets table.
-        drop_public_assets_type_safe(conn)
-        logger.info("✅ Dropped public.assets if present (unblock FK from prices)")
 
         logger.info("✅ Ensured Route A canonical schema objects (source_assets/universe_assets/_stg_universe_assets)")
 
@@ -467,9 +485,15 @@ def init_database() -> bool:
         # Use isolated transactions to avoid poisoned pooled connections.
         ensure_v8_schema()
 
-        # ORM tables (assets, prices, users, groups, subgroups, categories) required for tests/legacy.
+        # ORM tables (prices, users, groups, subgroups, categories) required for tests/legacy.
+        # Note: public.assets is a VIEW (Route A), not ORM table.
         import models  # noqa: F401
         Base.metadata.create_all(bind=engine)
+
+        # Route A: public.assets MUST be a compatibility VIEW sourced from universe_assets.
+        with engine.begin() as conn:
+            ensure_public_assets_view(conn)
+        logger.info("✅ Ensured public.assets compatibility VIEW")
 
         # CI/test: minimal seed so universe_assets and MV have rows (v8 snapshot ready).
         if os.getenv("CI", "").lower() in ("1", "true", "yes") or os.getenv("PYTEST_CURRENT_TEST"):

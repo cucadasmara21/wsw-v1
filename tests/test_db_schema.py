@@ -8,32 +8,29 @@ from models import Asset, Price, RiskSnapshot, Category, Group, Subgroup
 
 
 def test_required_tables_exist():
-    """Verify all required tables exist after init_database()"""
-    # Initialize database first
+    """Verify all required tables and public.assets VIEW exist after init_database()"""
     from database import init_database
     init_database()
-    
+
     inspector = inspect(engine)
     tables = inspector.get_table_names()
-    
-    # Core tables (always required)
+
+    # Core tables (Route A: assets is VIEW, not table)
     required_tables = [
-        "assets",
         "prices",
         "users",
         "risk_metrics",
     ]
-    
-    # Taxonomy tables (required for Sovereign Symphony)
-    taxonomy_tables = [
-        "groups",
-        "subgroups",
-        "categories",
-        "risk_snapshots",  # Used by TaxonomyEngine
-    ]
-    
+
     for table in required_tables:
         assert table in tables, f"Required table '{table}' missing"
+
+    # Route A: public.assets must exist as VIEW (compatibility layer)
+    with engine.connect() as conn:
+        exists = conn.execute(
+            text("SELECT to_regclass('public.assets') IS NOT NULL")
+        ).scalar()
+    assert exists, "Required view 'public.assets' missing"
     
     # Taxonomy tables may not exist if DB not initialized with seed_ontology
     # But if they exist, they must have correct structure

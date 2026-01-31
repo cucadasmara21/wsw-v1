@@ -35,9 +35,9 @@ class _FakeConn:
             return _FakeResult(scalar_value=1)
         if "to_regclass('public.universe_snapshot_v8')" in sql:
             return _FakeResult(scalar_value=self._has_mv)
-        if "to_regclass('public.assets')" in sql:
-            return _FakeResult(scalar_value=False)
         if "to_regclass('public.universe_assets')" in sql:
+            return _FakeResult(scalar_value=self._has_table)
+        if "to_regclass('public.assets')" in sql:
             return _FakeResult(scalar_value=self._has_table)
         if "SELECT COUNT(*) FROM public.universe_assets" in sql:
             return _FakeResult(scalar_value=len(self._rows))
@@ -82,9 +82,21 @@ def test_snapshot_returns_vertex28_bytes(monkeypatch):
     from api import universe_v8 as mod
 
     monkeypatch.setattr(mod.settings, "DATABASE_URL", "postgresql://localhost/wsw_db", raising=False)
+    monkeypatch.setattr(mod, "_ensure_v8_schema_best_effort", lambda: None)
+
+    def fake_get_v8_status():
+        return {
+            "db_ok": True,
+            "schema_ok": True,
+            "ready": True,
+            "reason": None,
+            "database_url_scheme": "postgresql",
+            "rows": 10,
+        }
+
+    monkeypatch.setattr(mod, "get_v8_status", fake_get_v8_status)
 
     rec = pack_vertex28(1, 2, 0.1, 0.2, 0.3, 0.9, 0.5)
-    # Simulate psycopg2 BYTEA behavior (memoryview)
     rows = [(memoryview(rec),) for _ in range(10)]
     fake = _FakeConn(has_mv=True, has_table=True, rows=rows)
     monkeypatch.setattr(mod.engine, "connect", lambda: _fake_connect(fake))

@@ -21,6 +21,8 @@ class Asset(Base):
     name = Column(String(200))
     sector = Column(String(100))
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
+    taxonomy32 = Column(BigInteger, default=0)  # Route A compatibility
+    meta32 = Column(BigInteger, default=0)  # Route A compatibility
     exchange = Column(String(50))
     country = Column(String(50))
     currency = Column(String(3), default="USD")

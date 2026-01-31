@@ -13,6 +13,7 @@ Validation (DoD snippets):
 - psql: SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='_stg_universe_assets' AND column_name IN ('taxonomy32','meta32');
 """
 import logging
+import os
 from contextlib import contextmanager
 from typing import Optional, Generator, Dict, Any
 from sqlalchemy import create_engine, text, MetaData
@@ -201,27 +202,12 @@ def ensure_v8_schema() -> None:
         conn.execute(text("DROP INDEX IF EXISTS public.ix__stg_universe_assets_symbol;"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux__stg_universe_assets_symbol ON public._stg_universe_assets(symbol);"))
 
-        # Stable Route A assets view (ingestion truth).
-        # NOTE: this is a VIEW, not the legacy ORM table `assets`.
-        conn.execute(
-            text(
-                """
-                CREATE OR REPLACE VIEW public.assets AS
-                SELECT
-                  sa.asset_id,
-                  sa.id AS source_id,
-                  sa.symbol,
-                  COALESCE(NULLIF(btrim(sa.symbol), ''), 'UNKNOWN') AS name,
-                  sa.sector,
-                  NULL::text AS industry,
-                  COALESCE(sa.titan_taxonomy32, 0)::bigint AS taxonomy32,
-                  COALESCE(sa.meta32, 0)::bigint AS meta32
-                FROM public.source_assets sa;
-                """
-            )
-        )
+        # CI/legacy: assets MUST be a TABLE (prices FK references assets.id).
+        # Drop Route A view if present; ORM create_all will create assets table.
+        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
+        logger.info("✅ Dropped assets view (unblock FK from prices)")
 
-        logger.info("✅ Ensured Route A canonical schema objects (source_assets/universe_assets/_stg_universe_assets/assets view)")
+        logger.info("✅ Ensured Route A canonical schema objects (source_assets/universe_assets/_stg_universe_assets)")
 
     # 2) Best-effort repair: keep source_assets and universe_assets joinable by symbol.
     try:
@@ -429,6 +415,20 @@ def init_database() -> bool:
         # Postgres-first bootstrap for TITAN V8 canonical objects (idempotent).
         # Use isolated transactions to avoid poisoned pooled connections.
         ensure_v8_schema()
+
+        # ORM tables (assets, prices, users, groups, subgroups, categories) required for tests/legacy.
+        import models  # noqa: F401
+        Base.metadata.create_all(bind=engine)
+
+        # CI/test: minimal seed so universe_assets and MV have rows (v8 snapshot ready).
+        if os.getenv("CI", "").lower() in ("1", "true", "yes") or os.getenv("PYTEST_CURRENT_TEST"):
+            n = ensure_min_universe_seed(min_rows=2)
+            if n > 0:
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text("REFRESH MATERIALIZED VIEW public.universe_snapshot_v8"))
+                except Exception:
+                    pass
 
         # ==================== TIMESCALEDB ====================
         if settings.ENABLE_TIMESCALE:

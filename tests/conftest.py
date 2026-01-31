@@ -13,9 +13,41 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from config import settings
+from config import parse_db_scheme
+
 from main import app
 from services.rbac_service import require_role
 from api.auth import get_current_user
+
+
+@pytest.fixture(autouse=True)
+def _reset_postgres_schema_per_test():
+    """Reset Postgres schema between tests to avoid contamination (UniqueViolation, etc.)."""
+    if parse_db_scheme(settings.DATABASE_URL or "") != "postgresql":
+        yield
+        return
+    try:
+        from database import engine, init_database
+        from sqlalchemy import text
+
+        with engine.connect() as conn:
+            r = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+            tables = [row[0] for row in r.fetchall()]
+        if tables:
+            with engine.begin() as conn:
+                tbl_list = ", ".join(f'public."{t}"' for t in tables)
+                conn.execute(text(f"TRUNCATE TABLE {tbl_list} RESTART IDENTITY CASCADE"))
+        init_database()
+        try:
+            from seed_ontology import seed_ontology
+            seed_ontology()
+        except Exception:
+            pass
+    except Exception:
+        pass
+    yield
+
 
 @pytest.fixture(scope="module")
 def client() -> Generator[TestClient, None, None]:

@@ -298,11 +298,8 @@ async def ensure_quantum_schema(conn: asyncpg.Connection) -> None:
     Ensure universe_assets has all required columns (idempotent).
     Uses ALTER TABLE ... ADD COLUMN IF NOT EXISTS for safety.
     """
-    # CRITICAL: universe_assets column migrations may be blocked by dependent views/MVs.
-    # Drop compatibility view + snapshot MV first (idempotent) before any ALTER COLUMN.
-    from database import drop_public_assets_type_safe_async
-
-    await drop_public_assets_type_safe_async(conn)
+    # CRITICAL: Drop snapshot MV first (idempotent) before any ALTER COLUMN.
+    # Do NOT drop public.assets (TABLE) - required for legacy/inserts.
     await conn.execute("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;")
 
     # Check if table exists
@@ -363,9 +360,20 @@ async def ensure_quantum_schema(conn: asyncpg.Connection) -> None:
         CREATE INDEX IF NOT EXISTS ix_universe_assets_morton ON public.universe_assets(morton_code);
     """)
 
-    # Recreate legacy compatibility view after schema is finalized.
-    # Compatibility contract: callers can SELECT * FROM public.assets to read canonical V8 data.
-    await conn.execute("CREATE OR REPLACE VIEW public.assets AS SELECT * FROM public.universe_assets;")
+    # Recreate Route A compatibility view (do NOT replace public.assets TABLE).
+    await conn.execute(
+        """
+        CREATE OR REPLACE VIEW public.assets_v8 AS
+        SELECT
+          row_number() OVER (ORDER BY symbol)::int AS id,
+          symbol,
+          COALESCE(NULLIF(btrim(symbol), ''), 'UNKNOWN') AS name,
+          sector,
+          taxonomy32::bigint AS taxonomy32,
+          meta32::bigint AS meta32
+        FROM public.universe_assets;
+        """
+    )
 
 
 async def ensure_assets_source_view(pool: asyncpg.Pool) -> None:

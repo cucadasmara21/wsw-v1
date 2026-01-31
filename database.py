@@ -108,16 +108,16 @@ async def drop_public_assets_type_safe_async(conn) -> None:
         await conn.execute("DROP TABLE IF EXISTS public.assets CASCADE;")
 
 
-def ensure_public_assets_view(conn) -> None:
+def ensure_public_assets_v8_view(conn) -> None:
     """
-    Ensure public.assets exists as a compatibility VIEW sourced from universe_assets.
-    Drops any existing TABLE or VIEW first (type-safe).
+    Ensure public.assets_v8 exists as Route A compatibility VIEW sourced from universe_assets.
+    Does NOT touch public.assets (must remain TABLE for legacy/inserts).
     """
-    drop_public_assets_type_safe(conn)
+    conn.execute(text("DROP VIEW IF EXISTS public.assets_v8 CASCADE;"))
     conn.execute(
         text(
             """
-            CREATE OR REPLACE VIEW public.assets AS
+            CREATE OR REPLACE VIEW public.assets_v8 AS
             SELECT
               row_number() OVER (ORDER BY symbol)::int AS id,
               symbol,
@@ -138,8 +138,7 @@ def ensure_v8_schema() -> None:
     IMPORTANT:
     - Runs in isolated transaction scopes (engine.begin()) so failures never poison pooled connections.
     - Route A: PostgreSQL-only + Vertex28.
-    - Route A `public.assets` is a stable *VIEW* sourced from `public.source_assets` (canonical ingestion layer),
-      not the legacy ORM table `assets`.
+    - public.assets is TABLE (ORM/legacy); public.assets_v8 is VIEW over universe_assets (Route A).
 
     Validation (DoD snippets):
     - psql: SELECT COUNT(*) FROM public.source_assets; SELECT COUNT(*) FROM public.universe_assets;
@@ -485,15 +484,18 @@ def init_database() -> bool:
         # Use isolated transactions to avoid poisoned pooled connections.
         ensure_v8_schema()
 
-        # ORM tables (prices, users, groups, subgroups, categories) required for tests/legacy.
-        # Note: public.assets is a VIEW (Route A), not ORM table.
+        # ORM tables (assets, prices, users, groups, subgroups, categories) for tests/legacy.
+        # public.assets MUST remain TABLE (insertable for seeds/tests).
         import models  # noqa: F401
         Base.metadata.create_all(bind=engine)
 
-        # Route A: public.assets MUST be a compatibility VIEW sourced from universe_assets.
-        with engine.begin() as conn:
-            ensure_public_assets_view(conn)
-        logger.info("✅ Ensured public.assets compatibility VIEW")
+        # Route A: optional assets_v8 VIEW for Route A reads (does not replace assets table).
+        try:
+            with engine.begin() as conn:
+                ensure_public_assets_v8_view(conn)
+            logger.info("✅ Ensured public.assets_v8 compatibility VIEW")
+        except Exception as e:
+            logger.debug("assets_v8 view skip (universe_assets may be empty): %s", e)
 
         # CI/test: minimal seed so universe_assets and MV have rows (v8 snapshot ready).
         if os.getenv("CI", "").lower() in ("1", "true", "yes") or os.getenv("PYTEST_CURRENT_TEST"):

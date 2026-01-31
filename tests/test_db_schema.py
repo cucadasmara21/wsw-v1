@@ -8,15 +8,15 @@ from models import Asset, Price, RiskSnapshot, Category, Group, Subgroup
 
 
 def test_required_tables_exist():
-    """Verify all required tables and public.assets VIEW exist after init_database()"""
+    """Verify all required tables exist after init_database(); assets must be TABLE (insertable)."""
     from database import init_database
     init_database()
 
     inspector = inspect(engine)
     tables = inspector.get_table_names()
 
-    # Core tables (Route A: assets is VIEW, not table)
     required_tables = [
+        "assets",
         "prices",
         "users",
         "risk_metrics",
@@ -25,13 +25,17 @@ def test_required_tables_exist():
     for table in required_tables:
         assert table in tables, f"Required table '{table}' missing"
 
-    # Route A: public.assets must exist as VIEW (compatibility layer)
+    # assets must be TABLE (not VIEW) for legacy inserts
     with engine.connect() as conn:
-        exists = conn.execute(
-            text("SELECT to_regclass('public.assets') IS NOT NULL")
+        r = conn.execute(
+            text(
+                "SELECT relkind FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND c.relname = 'assets'"
+            )
         ).scalar()
-    assert exists, "Required view 'public.assets' missing"
-    
+    assert r == "r", "public.assets must be TABLE (relkind='r'), not VIEW"
+
     # Taxonomy tables may not exist if DB not initialized with seed_ontology
     # But if they exist, they must have correct structure
     if "risk_snapshots" in tables:
@@ -67,3 +71,22 @@ def test_asset_category_relationship():
     
     # Verify Asset model can query Category
     # (This is a structural test, not a runtime test)
+
+
+def test_assets_v8_view_creatable():
+    """Verify public.assets_v8 view exists when universe_assets is present (Route A)."""
+    from database import init_database
+    from config import parse_db_scheme, settings
+    from sqlalchemy.exc import OperationalError
+
+    if parse_db_scheme(settings.DATABASE_URL or "") != "postgresql":
+        pytest.skip("Requires PostgreSQL")
+    try:
+        init_database()
+        with engine.connect() as conn:
+            v = conn.execute(
+                text("SELECT to_regclass('public.assets_v8') IS NOT NULL")
+            ).scalar()
+    except OperationalError:
+        pytest.skip("Postgres not reachable")
+    assert v, "public.assets_v8 view should exist after init"

@@ -27,8 +27,8 @@ BEGIN
     END IF;
 END $$;
 
--- Compat view: "assets" (id + geometry + meta/taxonomy + has_price)
-CREATE OR REPLACE VIEW public.assets AS
+-- Route A compat view: assets_v8 (do NOT replace public.assets TABLE)
+CREATE OR REPLACE VIEW public.assets_v8 AS
 SELECT
   sa.asset_id                   AS id,
   sa.symbol                     AS symbol,

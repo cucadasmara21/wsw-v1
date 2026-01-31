@@ -98,10 +98,7 @@ def iter_rows(n: int) -> Iterable[Tuple]:
 async def _bootstrap(conn: asyncpg.Connection) -> None:
     await conn.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
 
-    # Drop dependencies that can block ALTER TYPE in legacy DBs.
-    from database import drop_public_assets_type_safe_async
-
-    await drop_public_assets_type_safe_async(conn)
+    # Drop MV that can block ALTER TYPE. Do NOT drop public.assets (TABLE).
     await conn.execute("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;")
 
     await conn.execute(

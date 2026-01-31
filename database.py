@@ -57,6 +57,57 @@ metadata = MetaData()
 # ==================== TITAN V8 SCHEMA (POSTGRES) ====================
 
 
+def drop_public_assets_type_safe(conn) -> None:
+    """
+    Type-safe drop for public.assets (SYNC).
+    If VIEW -> DROP VIEW; if TABLE -> DROP TABLE; if missing -> no-op.
+    conn: SQLAlchemy connection (from engine.connect() or engine.begin()).
+    """
+    result = conn.execute(
+        text(
+            """
+            SELECT relkind FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = 'assets'
+            LIMIT 1;
+            """
+        )
+    ).scalar()
+    if result is None:
+        return
+    if result == "v":
+        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
+    elif result == "r":
+        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
+    else:
+        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS public.assets CASCADE;"))
+
+
+async def drop_public_assets_type_safe_async(conn) -> None:
+    """
+    Type-safe drop for public.assets (ASYNC).
+    conn: asyncpg.Connection (or any with fetchval/execute).
+    """
+    relkind = await conn.fetchval(
+        """
+        SELECT relkind FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = 'assets'
+        LIMIT 1;
+        """
+    )
+    if relkind is None:
+        return
+    if relkind == "v":
+        await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
+    elif relkind == "r":
+        await conn.execute("DROP TABLE IF EXISTS public.assets CASCADE;")
+    else:
+        await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
+        await conn.execute("DROP TABLE IF EXISTS public.assets CASCADE;")
+
+
 def ensure_v8_schema() -> None:
     """
     Idempotent Postgres-first bootstrap for TITAN V8 canonical objects.
@@ -203,9 +254,9 @@ def ensure_v8_schema() -> None:
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux__stg_universe_assets_symbol ON public._stg_universe_assets(symbol);"))
 
         # CI/legacy: assets MUST be a TABLE (prices FK references assets.id).
-        # Drop Route A view if present; ORM create_all will create assets table.
-        conn.execute(text("DROP VIEW IF EXISTS public.assets CASCADE;"))
-        logger.info("✅ Dropped assets view (unblock FK from prices)")
+        # Type-safe drop: VIEW or TABLE; ORM create_all will create assets table.
+        drop_public_assets_type_safe(conn)
+        logger.info("✅ Dropped public.assets if present (unblock FK from prices)")
 
         logger.info("✅ Ensured Route A canonical schema objects (source_assets/universe_assets/_stg_universe_assets)")
 

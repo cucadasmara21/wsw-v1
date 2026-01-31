@@ -300,7 +300,9 @@ async def ensure_quantum_schema(conn: asyncpg.Connection) -> None:
     """
     # CRITICAL: universe_assets column migrations may be blocked by dependent views/MVs.
     # Drop compatibility view + snapshot MV first (idempotent) before any ALTER COLUMN.
-    await conn.execute("DROP VIEW IF EXISTS public.assets CASCADE;")
+    from database import drop_public_assets_type_safe_async
+
+    await drop_public_assets_type_safe_async(conn)
     await conn.execute("DROP MATERIALIZED VIEW IF EXISTS public.universe_snapshot_v8 CASCADE;")
 
     # Check if table exists

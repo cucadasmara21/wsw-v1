@@ -61,5 +61,7 @@ OUTPUT*.txt
 *_patch_targets*
 snapshots/
 snapshot*.bin
+snap*.bin
+snapshot*.zst
 tree_full.txt
 tree_*.txt
